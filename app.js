@@ -17,6 +17,6 @@ app.use("/profile", routerProfile);
 
 const PORT = process.env.PORT || 5600;
 
-app.listen(postMessage, () => {
+app.listen(PORT, () => {
   console.log(`Attendance API listening on http://localhost:${PORT}`);
 });
