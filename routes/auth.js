@@ -185,33 +185,55 @@ router.post("/verify", async (req, res) => {
 
 router.post("/forgot", async (req, res) => {
   const { email } = req.body;
-  console.log(req.body);
   if (!email) {
-    console.log("Email is required.");
-    return res.status(400).json({ error: "Email is required!!" });
+    return res.status(400).json({ error: "Email is required" });
   }
 
   try {
     const user = await findByEmail(email);
 
+    // Always respond with a generic success to avoid account enumeration.
     if (!user) {
-      return res.status(404).json({ error: "User not found" });
+      return res.status(200).json({
+        status: "ok",
+        message: "If the account exists, a reset code was sent to the email.",
+      });
     }
 
+    // Reuse active code if present
+    const existing = await getVerification(email);
+    const now = new Date();
+    if (
+      existing &&
+      existing.expires_at &&
+      new Date(existing.expires_at) > now
+    ) {
+      return res.status(200).json({
+        status: "ok",
+        notice: "code_active",
+        message: "A reset code is already active. Please check your email.",
+      });
+    }
+
+    // create and send a new reset code
     const code = generateCode();
     const expires = new Date(Date.now() + 1000 * 60 * 15).toISOString();
-
     await upsertVerification(email, code, expires, { force: true });
 
-    await sendVerificationEmail(email, code, "reset");
-    // generic success message (do not reveal account existence)
+    try {
+      await sendVerificationEmail(email, code, "reset");
+    } catch (mailErr) {
+      console.error("Failed to send reset email:", mailErr);
+      // don't propagate email errors to client
+    }
+
     return res.status(200).json({
       status: "ok",
       message: "If the account exists, a reset code was sent to the email.",
     });
   } catch (err) {
     console.error("Forgot password error:", err);
-    return res.status(500).json({ error: "Failed to send email." });
+    return res.status(500).json({ error: "Failed to process request." });
   }
 });
 

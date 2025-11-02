@@ -27,7 +27,7 @@ async function start() {
   await initUsers();
   const PORT = process.env.PORT || 5600;
   const HOST = process.env.HOST || "0.0.0.0";
-  const ip = process.env.IP_ADDRESS || "192.168.1.7";
+  const ip = process.env.IP_ADDRESS || "192.168.1.3";
   app.listen(PORT, HOST, () =>
     console.log(`Server listening on http://${ip}:${PORT}`)
   );
