@@ -1,8 +1,13 @@
 import sqlite3 from "sqlite3";
 import path from "path";
 import fs from "fs";
+import fsPromise from "fs/promises";
 
-const dbFile = "/mnt/c/Users/keith/Documents/SQLite3/attendance.sqlite3";
+const dbFile = path.resolve(
+  process.env.SQLITE_DB_PATH ||
+    path.join(process.cwd(), "data", "attendance.sqlite")
+);
+console.log("Using SQLite DB path:", dbFile);
 
 const parentDir = path.dirname(dbFile);
 if (!fs.existsSync(parentDir)) fs.mkdirSync(parentDir, { recursive: true });
@@ -27,6 +32,17 @@ export const parseDbString = (s) => {
   const d = new Date(s);
   return Number.isNaN(d.getTime()) ? null : d;
 };
+
+export async function initUsers() {
+  // ensure folder exists and that users.json exists as an array
+  await fsPromise.mkdir(path.dirname(dbFile), { recursive: true });
+  try {
+    await fsPromise.access(dbFile);
+  } catch (e) {
+    // file missing — create an empty array file
+    await fsPromise.writeFile(dbFile, JSON.stringify([], null, 2), "utf8");
+  }
+}
 
 db.serialize(() => {
   db.run("PRAGMA foreign_keys = ON");
