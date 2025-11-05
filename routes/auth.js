@@ -4,6 +4,8 @@ import {
   findByEmail,
   findOneBy,
   updatePasswordByEmail,
+  verifyPassword,
+  findById as findUserById,
 } from "../services/userStore.js";
 import {
   upsertVerification,
@@ -12,25 +14,148 @@ import {
   incAttempts,
 } from "../services/verificationStore.js";
 import { sendVerificationEmail } from "../services/mailService.js";
+import {
+  createSession,
+  findSessionByToken,
+  deleteSession,
+  extendSession,
+} from "../services/sessionStore.js";
+import authMiddleware from "../middleware/authMiddleware.js";
 import db from "../config/db.js";
+import dotenv from "dotenv";
+import jwt from "jsonwebtoken";
 
+dotenv.config();
 const router = express.Router();
 
 function generateCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-router.post("/login", (req, res) => {
+function generateToken(profile) {
+  if (process.env.JWT_SECRET) {
+    try {
+      const payload = { id: profile.id, email: profile.email };
+      return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "7d" });
+    } catch (e) {
+      console.error("JWT sign error:", e);
+      return "fake-jwt-token";
+    }
+  }
+  return "fake-jwt-token";
+}
+
+router.get("/session", async (req, res) => {
+  try {
+    const auth = req.headers.authorization || "";
+    if (!auth.startsWith("Bearer "))
+      return res.status(401).json({ error: "Missing token" });
+
+    const token = auth.split(" ")[1];
+
+    // check session db
+    const row = await findSessionByToken(token);
+    if (!row) return res.status(401).json({ error: "Invalid session" });
+
+    if (row.expires_at && new Date(row.expires_at) < new Date()) {
+      // session expired -> delete and reject
+      await deleteSession(token);
+      return res.status(401).json({ error: "Session expired" });
+    }
+
+    // if JWT_SECRET configured, also verify signature (optional but recommended)
+    if (process.env.JWT_SECRET) {
+      try {
+        jwt.verify(token, process.env.JWT_SECRET);
+      } catch (e) {
+        // invalid signature -> delete db row and reject
+        await deleteSession(token);
+        return res.status(401).json({ error: "Invalid token" });
+      }
+    }
+
+    // fetch user profile by user_id
+    const user = await findUserById(row.user_id);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    return res.json({
+      status: "ok",
+      profile: {
+        name: user.name,
+        email: user.email,
+        avatar_url: user.avatar_url,
+      },
+    });
+  } catch (err) {
+    console.error("session validation error:", err);
+    return res.status(500).json({ error: "Session check failed" });
+  }
+});
+
+// POST /auth/refresh
+// Verifies token (via middleware) and extends session expiry in DB.
+// Returns { expiresAt: ISOString } on success.
+router.post("/refresh", authMiddleware, async (req, res) => {
+  try {
+    const token =
+      req.authToken || (req.headers.authorization || "").split(" ")[1];
+    if (!token) return res.status(400).json({ error: "Missing token" });
+
+    const ttl = process.env.JWT_TTL
+      ? parseInt(process.env.JWT_TTL, 10)
+      : 7 * 24 * 60 * 60;
+    const newExpires = await extendSession(token, ttl);
+    if (!newExpires)
+      return res.status(404).json({ error: "Session not found" });
+
+    return res.json({ status: "ok", expiresAt: newExpires });
+  } catch (e) {
+    console.error("refresh session error:", e);
+    return res.status(500).json({ error: "Failed to refresh session" });
+  }
+});
+
+router.post("/login", async (req, res) => {
   const { email, password } = req.body || {};
-  // TODO: do later
+  console.table(req.body);
   if (!email || !password) {
     return res.status(400).json({ error: "Email and password required" });
   }
 
-  return res.json({
-    token: "fake-jwt-token",
-    profile: { name: "Test User", email, avatar_url: "" },
-  });
+  try {
+    const profile = await verifyPassword(email, password);
+    if (!profile) return res.status(401).json({ error: "Invalid credentials" });
+
+    const token = generateToken(profile);
+
+    // persist session in DB so /auth/session can validate the token
+    try {
+      const ttlSeconds = process.env.JWT_TTL
+        ? parseInt(process.env.JWT_TTL, 10)
+        : 7 * 24 * 60 * 60;
+      const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
+      await createSession(token, profile.id, expiresAt);
+    } catch (e) {
+      console.error("Failed to persist session:", e);
+      // Do not return success — report failure to client
+      return res
+        .status(500)
+        .json({ error: "Failed to sign in (server error)" });
+    }
+
+    return res.json({
+      token,
+      profile: {
+        name: profile.name,
+        email: profile.email,
+        avatar_url: profile.avatar_url,
+      },
+      notice: "Login_success",
+    });
+  } catch (err) {
+    console.error("login error:", err);
+    return res.status(500).json({ error: "Login failed" });
+  }
 });
 
 router.post("/signup", async (req, res) => {

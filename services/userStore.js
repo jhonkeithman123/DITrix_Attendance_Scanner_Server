@@ -18,6 +18,14 @@ export const get = (sql, params = []) =>
     });
   });
 
+export const all = (sql, params = []) =>
+  new Promise((resolve, reject) =>
+    db.all(sql, params, (err, rows) => {
+      if (err) return reject(err);
+      resolve(rows || []);
+    })
+  );
+
 function _mapRow(row) {
   if (!row) return null;
 
@@ -51,6 +59,25 @@ export async function findOneBy(param, value) {
   ]);
 
   return _mapRow(row);
+}
+
+/**
+ * Find user by id (returns public profile or null)
+ */
+export async function findById(id) {
+  if (!id) return null;
+  const row = await get(
+    `SELECT id, email, name, avatar_url, verified FROM users WHERE id = ? LIMIT 1`,
+    [id]
+  );
+  if (!row) return null;
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    avatar_url: row.avatar_url,
+    verified: !!row.verified,
+  };
 }
 
 export async function createUser({ email, password, name = "" }) {
@@ -121,4 +148,37 @@ export async function updatePasswordByEmail(email, newPassword) {
     email,
   ]);
   return true;
+}
+
+export async function updateProfileById(id, { name, avatar_url }) {
+  if (!id) throw new Error("Missing id");
+  const now = new Date().toISOString();
+  const sets = [];
+  const params = [];
+  if (name !== undefined) {
+    sets.push("name = ?");
+    params.push(name);
+  }
+  if (avatar_url !== undefined) {
+    sets.push("avatar_url = ?");
+    params.push(avatar_url);
+  }
+  if (sets.length === 0) return null;
+  params.push(now, id); // updated_at, where id=?
+  const sql = `UPDATE users SET ${sets.join(
+    ", "
+  )}, updated_at = ? WHERE id = ?`;
+  await run(sql, params);
+  const row = await get(
+    `SELECT id, email, name, avatar_url, verified FROM users WHERE id = ?`,
+    [id]
+  );
+  if (!row) return null;
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    avatar_url: row.avatar_url,
+    verified: !!row.verified,
+  };
 }
