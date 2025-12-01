@@ -1,27 +1,6 @@
 import { run, get, all } from "./userStore.js";
 
 /**
- * Ensure capture_session table exists (MySQL).
- */
-export async function initCaptureSessions() {
-  const createSql = `
-    CREATE TABLE IF NOT EXISTS capture_session (
-      id VARCHAR(191) PRIMARY KEY,
-      user_id VARCHAR(191) NOT NULL,
-      subject VARCHAR(255),
-      date DATE,
-      start_time TIME,
-      end_time TIME,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      INDEX idx_capture_user (user_id(191)),
-      CONSTRAINT fk_capture_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-  `;
-  await run(createSql);
-}
-
-/**
  * Upsert an array of capture objects for a given user.
  * Returns the number of successfully inserted/updated rows.
  */

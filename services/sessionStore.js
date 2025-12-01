@@ -1,47 +1,6 @@
 import db from "../config/db.js";
 
 /**
- * Initialize sessions support (MySQL).
- * - Creates sessions table if missing.
- * - Adds expires_at column if missing.
- */
-export async function initSessions() {
-  // Create sessions table if not exists (MySQL)
-  const createSql = `
-    CREATE TABLE IF NOT EXISTS sessions (
-      id VARCHAR(191) PRIMARY KEY,
-      user_id VARCHAR(191),
-      subject VARCHAR(255),
-      date DATE,
-      start_time TIME,
-      end_time TIME,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      expires_at TIMESTAMP NULL DEFAULT NULL,
-      INDEX idx_sessions_user (user_id(191)),
-      INDEX idx_sessions_expires (expires_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-  `;
-  await db.query(createSql);
-
-  // Ensure expires_at column exists (safe one-time add)
-  try {
-    const [cols] = await db.query(
-      "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?",
-      [process.env.DB_NAME, "sessions"]
-    );
-    const hasExpires = (cols || []).some((c) => c.COLUMN_NAME === "expires_at");
-    if (!hasExpires) {
-      await db.query("ALTER TABLE sessions ADD COLUMN expires_at DATETIME");
-      console.log("sessionStore: added expires_at column to sessions table");
-    }
-  } catch (e) {
-    // non-fatal: log and continue
-    console.warn("sessionStore: could not verify/alter columns:", e?.message || e);
-  }
-}
-
-/**
  * Store (or replace) a session by token.
  * Uses INSERT ... ON DUPLICATE KEY UPDATE for upsert.
  */
