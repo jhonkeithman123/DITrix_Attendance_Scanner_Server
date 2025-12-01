@@ -1,98 +1,110 @@
 import db from "../config/db.js";
-import { run, get } from "./userStore.js";
 
 /**
- * Initialize sessions support.
- * - If your sessions table already exists we won't recreate it.
- * - If expires_at column is missing we'll add it (safe one-time ALTER).
+ * Initialize sessions support (MySQL).
+ * - Creates sessions table if missing.
+ * - Adds expires_at column if missing.
  */
 export async function initSessions() {
-  // check if sessions table exists
-  const tbl = await get(
-    "SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'"
-  );
-  if (!tbl) {
-    // fallback: create a minimal sessions table (compatible with your schema)
-    await run(`CREATE TABLE IF NOT EXISTS sessions (
-      id TEXT PRIMARY KEY,
-      user_id TEXT,
-      subject TEXT,
-      date TEXT,
-      start_time TEXT,
-      end_time TEXT,
-      created_at TEXT,
-      updated_at TEXT,
-      expires_at TEXT
-    )`);
-    return;
-  }
+  // Create sessions table if not exists (MySQL)
+  const createSql = `
+    CREATE TABLE IF NOT EXISTS sessions (
+      id VARCHAR(255) PRIMARY KEY,
+      user_id VARCHAR(255),
+      subject VARCHAR(255),
+      date DATE,
+      start_time TIME,
+      end_time TIME,
+      created_at DATETIME,
+      updated_at DATETIME,
+      expires_at DATETIME,
+      INDEX (user_id),
+      INDEX (expires_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  `;
+  await db.query(createSql);
 
-  // check for expires_at column; if missing, add it
-  const cols = await new Promise((resolve, reject) =>
-    db.all(`PRAGMA table_info('sessions')`, (err, rows) => {
-      if (err) return reject(err);
-      resolve(rows || []);
-    })
-  );
-
-  const hasExpires = cols.some((c) => c.name === "expires_at");
-  if (!hasExpires) {
-    try {
-      await run(`ALTER TABLE sessions ADD COLUMN expires_at TEXT`);
+  // Ensure expires_at column exists (safe one-time add)
+  try {
+    const [cols] = await db.query(
+      "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?",
+      [process.env.DB_NAME, "sessions"]
+    );
+    const hasExpires = (cols || []).some((c) => c.COLUMN_NAME === "expires_at");
+    if (!hasExpires) {
+      await db.query("ALTER TABLE sessions ADD COLUMN expires_at DATETIME");
       console.log("sessionStore: added expires_at column to sessions table");
-    } catch (e) {
-      console.warn(
-        "sessionStore: failed to add expires_at column (it may already exist)",
-        e
-      );
     }
+  } catch (e) {
+    // non-fatal: log and continue
+    console.warn("sessionStore: could not verify/alter columns:", e?.message || e);
   }
 }
 
 /**
  * Store (or replace) a session by token.
- * - token -> stored in id column
- * - userId -> user_id column
- * - expiresAt -> ISO string or null
+ * Uses INSERT ... ON DUPLICATE KEY UPDATE for upsert.
  */
-export async function createSession(token, userId, expiresAt = null) {
-  const now = new Date().toISOString();
+export async function createSession(token, userId, expiresAt = null, extra = {}) {
+  const now = new Date();
+  const createdAt = now.toISOString().slice(0, 19).replace("T", " ");
+  const updatedAt = createdAt;
+  const dateOnly = now.toISOString().slice(0, 10);
 
-  // Your existing sessions schema requires a non-null "date" column.
-  // Use today's date (YYYY-MM-DD) for that column so INSERT won't fail.
-  const dateOnly = now.split("T")[0];
+  const sql = `
+    INSERT INTO sessions
+      (id, user_id, subject, date, start_time, end_time, created_at, updated_at, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      user_id = VALUES(user_id),
+      subject = VALUES(subject),
+      date = VALUES(date),
+      start_time = VALUES(start_time),
+      end_time = VALUES(end_time),
+      updated_at = VALUES(updated_at),
+      expires_at = VALUES(expires_at)
+  `;
 
-  // insert or replace to update an existing token
-  await run(
-    `INSERT OR REPLACE INTO sessions (id, user_id, date, expires_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [token, String(userId), dateOnly, expiresAt, now, now]
-  );
+  const params = [
+    token,
+    String(userId),
+    extra.subject || null,
+    dateOnly,
+    extra.start_time || null,
+    extra.end_time || null,
+    createdAt,
+    updatedAt,
+    expiresAt ? new Date(expiresAt).toISOString().slice(0, 19).replace("T", " ") : null,
+  ];
+
+  await db.query(sql, params);
   return true;
 }
 
 export async function findSessionByToken(token) {
-  return get(`SELECT * FROM sessions WHERE id = ?`, [token]);
+  const [rows] = await db.query("SELECT * FROM sessions WHERE id = ? LIMIT 1", [token]);
+  return rows && rows.length ? rows[0] : null;
 }
 
 export async function deleteSession(token) {
-  await run(`DELETE FROM sessions WHERE id = ?`, [token]);
+  await db.query("DELETE FROM sessions WHERE id = ?", [token]);
 }
 
 export async function deleteSessionsByUser(userId) {
-  await run(`DELETE FROM sessions WHERE user_id = ?`, [String(userId)]);
+  await db.query("DELETE FROM sessions WHERE user_id = ?", [String(userId)]);
 }
 
 // extend/refresh an existing session's expires_at
 export async function extendSession(token, ttlSeconds = 7 * 24 * 60 * 60) {
   if (!token) throw new Error("Missing token");
-  const rec = await get(`SELECT * FROM sessions WHERE id = ?`, [token]);
+  const rec = await findSessionByToken(token);
   if (!rec) return null;
-  const newExpires = new Date(Date.now() + ttlSeconds * 1000).toISOString();
-  await run(`UPDATE sessions SET expires_at = ?, updated_at = ? WHERE id = ?`, [
-    newExpires,
-    new Date().toISOString(),
+  const newExpires = new Date(Date.now() + ttlSeconds * 1000);
+  const newExpiresSql = newExpires.toISOString().slice(0, 19).replace("T", " ");
+  await db.query("UPDATE sessions SET expires_at = ?, updated_at = ? WHERE id = ?", [
+    newExpiresSql,
+    new Date().toISOString().slice(0, 19).replace("T", " "),
     token,
   ]);
-  return newExpires;
+  return newExpires.toISOString();
 }

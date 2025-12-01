@@ -1,30 +1,24 @@
 import bcrypt from "bcryptjs";
 import db from "../config/db.js";
 
-/* Promise wrappers around sqlite3 callbacks */
-export const run = (sql, params = []) =>
-  new Promise((resolve, reject) => {
-    db.run(sql, params, function (err) {
-      if (err) return reject(err);
-      resolve(this);
-    });
-  });
+/**
+ * MySQL-compatible promise helpers (wrap db.query)
+ * db.query(...) returns [rows, fields] via mysql2/promise pool
+ */
+export const run = async (sql, params = []) => {
+  await db.query(sql, params);
+  return true;
+};
 
-export const get = (sql, params = []) =>
-  new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
-      if (err) return reject(err);
-      resolve(row || null);
-    });
-  });
+export const get = async (sql, params = []) => {
+  const [rows] = await db.query(sql, params);
+  return rows && rows.length ? rows[0] : null;
+};
 
-export const all = (sql, params = []) =>
-  new Promise((resolve, reject) =>
-    db.all(sql, params, (err, rows) => {
-      if (err) return reject(err);
-      resolve(rows || []);
-    })
-  );
+export const all = async (sql, params = []) => {
+  const [rows] = await db.query(sql, params);
+  return rows || [];
+};
 
 function _mapRow(row) {
   if (!row) return null;
@@ -42,7 +36,7 @@ function _mapRow(row) {
 export async function findByEmail(email) {
   const row = await get(
     `SELECT id, email, name, avatar_url, password_hash, created_at
-    FROM users WHERE email = ? LIMIT 1`,
+     FROM users WHERE email = ? LIMIT 1`,
     [email]
   );
   return _mapRow(row);
@@ -86,11 +80,12 @@ export async function createUser({ email, password, name = "" }) {
 
   const passwordHash = await bcrypt.hash(password, 10);
   const id = Date.now().toString();
+  const now = new Date().toISOString().slice(0, 19).replace("T", " ");
 
   await run(
-    `INSERT INTO users (id, email, password_hash, name, avatar_url)
-        VALUES (?, ?, ?, ?, ?)`,
-    [id, email, passwordHash, name, ""]
+    `INSERT INTO users (id, email, password_hash, name, avatar_url, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)`,
+    [id, email, passwordHash, name, "", now]
   );
 
   return {
@@ -98,7 +93,7 @@ export async function createUser({ email, password, name = "" }) {
     email,
     name,
     avatar_url: "",
-    created_at: new Date().toISOString(),
+    created_at: now,
   };
 }
 
@@ -152,7 +147,7 @@ export async function updatePasswordByEmail(email, newPassword) {
 
 export async function updateProfileById(id, { name, avatar_url }) {
   if (!id) throw new Error("Missing id");
-  const now = new Date().toISOString();
+  const now = new Date().toISOString().slice(0, 19).replace("T", " ");
   const sets = [];
   const params = [];
   if (name !== undefined) {
