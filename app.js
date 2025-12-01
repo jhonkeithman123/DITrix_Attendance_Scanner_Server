@@ -11,7 +11,7 @@ import routerProfile from "./routes/profile.js";
 import routerSync from "./routes/sync.js";
 import health from "./routes/health.js";
 
-import dbCheck from "./middleware/db-check.js";
+import dbCheck from "./middleware/db_check.js";
 
 dotenv.config();
 const app = express();
