@@ -35,7 +35,7 @@ async function tryConnectOnce() {
       password: process.env.DB_PASS,
       database: process.env.DB_NAME,
       waitForConnections: true,
-      connectionLimit: 10,
+      connectionLimit: Number(process.env.DB_CONN_LIMIT || 2), // <-- lowered for serverless
       queueLimit: 0,
       connectTimeout: Number(process.env.DB_CONNECT_TIMEOUT_MS || 10000),
       ssl:

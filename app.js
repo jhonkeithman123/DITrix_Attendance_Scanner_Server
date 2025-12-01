@@ -9,6 +9,7 @@ import restrictBrowseRoute from "./routes/browser_restrict.js";
 import routerAuth from "./routes/auth.js";
 import routerProfile from "./routes/profile.js";
 import routerSync from "./routes/sync.js";
+import health from "./routes/health.js";
 
 import dbCheck from "./middleware/db-check.js";
 
@@ -24,7 +25,7 @@ app.use("/", restrictBrowseRoute);
 app.use("/auth", routerAuth);
 app.use("/sync", routerSync);
 app.use("/profile", routerProfile);
-// ...existing code...
+app.use("/health", health);
 
 async function tryInitDb({
   maxRetries = Infinity,
