@@ -1,11 +1,14 @@
 import { run, get } from "./userStore.js";
+
 /**
  * Return verification row or null
  * { email, code, expires_at, attempts, created_at }
  */
 export async function getVerification(email) {
   return get(
-    `SELECT email, code, expires_at, attempts, created_at FROM email_verifications WHERE email = ? LIMIT 1`,
+    `SELECT email, code, expires_at, attempts, created_at
+     FROM email_verifications
+     WHERE email = ? LIMIT 1`,
     [email]
   );
 }
@@ -27,20 +30,22 @@ export async function upsertVerification(
   const existing = await getVerification(email);
 
   if (!options.force && existing) {
-    const expiresAt = existing.expires_at
-      ? new Date(existing.expires_at)
-      : null;
+    const expiresAt = existing.expires_at ? new Date(existing.expires_at) : null;
     if (expiresAt && expiresAt > now) {
       // keep existing unexpired code
       return existing;
     }
   }
 
-  // insert or replace with new code
+  // MySQL-compatible upsert (requires email to be PRIMARY KEY or UNIQUE)
   await run(
     `INSERT INTO email_verifications (email, code, expires_at, attempts, created_at)
-     VALUES (?, ?, ?, 0, datetime('now'))
-     ON CONFLICT(email) DO UPDATE SET code = excluded.code, expires_at = excluded.expires_at, attempts = 0, created_at = datetime('now')`,
+     VALUES (?, ?, ?, 0, NOW())
+     ON DUPLICATE KEY UPDATE
+       code = VALUES(code),
+       expires_at = VALUES(expires_at),
+       attempts = 0,
+       created_at = VALUES(created_at)`,
     [email, code, expiresIso]
   );
 
@@ -53,7 +58,7 @@ export async function deleteVerification(email) {
 
 export async function incAttempts(email) {
   await run(
-    `UPDATE email_verifications SET attempts = attempts + 1 WHERE email = ?`,
+    `UPDATE email_verifications SET attempts = COALESCE(attempts,0) + 1 WHERE email = ?`,
     [email]
   );
 }
