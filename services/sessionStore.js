@@ -9,17 +9,17 @@ export async function initSessions() {
   // Create sessions table if not exists (MySQL)
   const createSql = `
     CREATE TABLE IF NOT EXISTS sessions (
-      id VARCHAR(255) PRIMARY KEY,
-      user_id VARCHAR(255),
+      id VARCHAR(191) PRIMARY KEY,
+      user_id VARCHAR(191),
       subject VARCHAR(255),
       date DATE,
       start_time TIME,
       end_time TIME,
-      created_at DATETIME,
-      updated_at DATETIME,
-      expires_at DATETIME,
-      INDEX (user_id),
-      INDEX (expires_at)
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      expires_at TIMESTAMP NULL DEFAULT NULL,
+      INDEX idx_sessions_user (user_id(191)),
+      INDEX idx_sessions_expires (expires_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   `;
   await db.query(createSql);

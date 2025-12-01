@@ -184,14 +184,14 @@ async function query(sql, params = []) {
 export async function initUsers() {
   const createUsersSql = `
     CREATE TABLE IF NOT EXISTS users (
-      id VARCHAR(64) PRIMARY KEY,
+      id VARCHAR(191) PRIMARY KEY,
       email VARCHAR(255) NOT NULL UNIQUE,
       password_hash VARCHAR(255),
       name VARCHAR(255),
       avatar_url VARCHAR(512),
       verified TINYINT(1) DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   `;
   try {
