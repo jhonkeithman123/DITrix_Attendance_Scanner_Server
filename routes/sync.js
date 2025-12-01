@@ -3,14 +3,9 @@ import authMiddleware from "../middleware/authMiddleware.js";
 import {
   upsertCapturesForUser,
   findCaptureByUser,
-  initCaptureSessions,
 } from "../services/captureSessionStore.js";
 
 const router = express.Router();
-
-initCaptureSessions().catch((e) => {
-  console.error("initCaptureSession failed:", e);
-});
 
 // POST /sync/captures
 // body: { captures: [ { capture_id, subject, date, start_time, end_time } ] }
