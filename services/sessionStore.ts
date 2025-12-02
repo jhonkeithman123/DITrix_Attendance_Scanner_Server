@@ -30,14 +30,11 @@ export async function createSession(
 
   const sql = `
     INSERT INTO sessions
-      (id, user_id, subject, date, start_time, end_time, created_at, updated_at, expires_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, user_id, date, created_at, updated_at, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       user_id = VALUES(user_id),
-      subject = VALUES(subject),
       date = VALUES(date),
-      start_time = VALUES(start_time),
-      end_time = VALUES(end_time),
       updated_at = VALUES(updated_at),
       expires_at = VALUES(expires_at)
   `;
@@ -52,15 +49,10 @@ export async function createSession(
   const params = [
     token,
     String(userId),
-    extra.subject || null,
-    dateOnly,
-    extra.start_time || null,
-    extra.end_time || null,
+    extra.date ?? dateOnly,
     createdAt,
     updatedAt,
-    expiresAt
-      ? new Date(expiresAt).toISOString().slice(0, 19).replace("T", " ")
-      : null,
+    expiresSql,
   ];
 
   await db.query(sql, params);
