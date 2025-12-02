@@ -39,16 +39,21 @@ router.get("/", (req, res) => {
         </div>
 
         <div class="note">
-        Use the mobile app or a client that talks to the API. To register or sign-in, POST to <code>/auth/signup</code> and <code>/auth/login</code>.
-        If you're testing from an Android emulator use <code>http://10.0.2.2:${
-          process.env.PORT || 5600
-        }</code>.
+          Use the mobile app or a client that talks to the API. To register or sign-in, POST to <code>/auth/signup</code> and <code>/auth/login</code>.
+          If you're testing from an Android emulator use <code>http://10.0.2.2:${
+            process.env.PORT || 5600
+          }</code>.
+        </div>
+
+        <div class="note">
+          You can download the latest apk from my github from the link below.
         </div>
 
         <div class="links">
-        <a class="btn" href="/auth" title="Auth routes">Auth routes</a>
-        <a class="btn" href="/profile" title="Profile routes">Profile</a>
-        <a class="btn primary" href="${"https://github.com/jhonkeithman123/DITrix_Attendance_Scanner/blob/main/README.md"}" title="Contact">Need help? Check README</a>
+          <a class="btn" href="/auth" title="Auth routes">Auth routes</a>
+          <a class="btn" href="/profile" title="Profile routes">Profile</a>
+          <a class="btn primary" href="${"https://github.com/jhonkeithman123/DITrix_Attendance_Scanner/blob/main/README.md"}" title="Contact">Need help? Check README</a>
+          <a class="btn primary" href="${"https://github.com/jhonkeithman123/DITrix_Attendance_Scanner/releases"}">Download the latest APK from GITHUB</a>
         </div>
 
         <footer>Server version: ${version} — Listening on ${
