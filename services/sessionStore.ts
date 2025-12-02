@@ -62,10 +62,13 @@ export async function createSession(
 export async function findSessionByToken(
   token: string
 ): Promise<RowDataPacket | null> {
-  const [rows] = await db.query("SELECT * FROM sessions WHERE id = ? LIMIT 1", [
-    token,
-  ]);
-  return rows && rows.length ? rows[0] : null;
+  const res: any = await db.query(
+    "SELECT * FROM sessions WHERE id = ? LIMIT 1",
+    [token]
+  );
+  const rows = Array.isArray(res) && Array.isArray(res[0]) ? res[0] : res;
+  if (!rows || rows.length === 0) return null;
+  return rows[0] as RowDataPacket;
 }
 
 export async function deleteSession(token: string): Promise<void> {
@@ -84,10 +87,13 @@ export async function extendSession(
   ttlSeconds = 7 * 24 * 60 * 60
 ): Promise<string | null> {
   if (!token) throw new Error("Missing token");
+
   const rec = await findSessionByToken(token);
   if (!rec) return null;
+
   const newExpires = new Date(Date.now() + ttlSeconds * 1000);
   const newExpiresSql = newExpires.toISOString().slice(0, 19).replace("T", " ");
+
   await db.query(
     "UPDATE sessions SET expires_at = ?, updated_at = ? WHERE id = ?",
     [
