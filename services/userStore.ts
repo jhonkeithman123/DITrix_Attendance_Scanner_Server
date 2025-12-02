@@ -160,8 +160,21 @@ export async function createUser({
 
   const sql = `INSERT INTO users (email, password_hash, name, avatar_url, created_at)
       VALUES (?, ?, ?, ?, ?)`;
-  const [res]: any = await db.query(sql, [email, passwordHash, name, "", now]);
-  const insertId = res && res.id ? String(res.id) : null;
+  // mysql2 returns [result, fields] when using pool.query; some wrappers return result directly.
+  const qres: any = await db.query(sql, [email, passwordHash, name, "", now]);
+  // normalize result: if [result, fields] -> take first element
+  const result =
+    Array.isArray(qres) &&
+    qres.length > 0 &&
+    qres[0] &&
+    typeof qres[0] === "object"
+      ? qres[0]
+      : qres;
+
+  // prefer insertId (mysql2). fallback to common alternatives if present.
+  const rawInsertId =
+    result && (result.insertId ?? result.insertid ?? result.id ?? null);
+  const insertId = rawInsertId != null ? String(rawInsertId) : null;
 
   return {
     id: insertId ?? "",

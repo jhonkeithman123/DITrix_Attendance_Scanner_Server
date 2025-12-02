@@ -136,16 +136,21 @@ router.post("/login", async (req: Request, res: Response) => {
     if (!profile) return res.status(401).json({ error: "Invalid credentials" });
 
     const token = generateToken(profile);
+    let expiresAtIso;
 
     // persist session in DB so /auth/session can validate the token
     try {
       const ttlSeconds = process.env.JWT_TTL
         ? parseInt(process.env.JWT_TTL, 10)
         : 7 * 24 * 60 * 60;
-      const expiresAt = toMySqlDatetimeUTC(
+      const expiresAtSql = toMySqlDatetimeUTC(
         new Date(Date.now() + ttlSeconds * 1000)
       );
-      await createSession(token, profile.id, expiresAt);
+      await createSession(token, profile.id, expiresAtSql);
+      // return an ISO expiry (client-friendly) in UTC
+      expiresAtIso = parseDbDateUtc(expiresAtSql)
+        ? parseDbDateUtc(expiresAtSql)!.toISOString()
+        : null;
     } catch (e) {
       console.error("Failed to persist session:", e);
       // Do not return success — report failure to client
@@ -156,6 +161,7 @@ router.post("/login", async (req: Request, res: Response) => {
 
     return res.json({
       token,
+      expiresAt: expiresAtIso,
       profile: {
         name: profile.name,
         email: profile.email,
