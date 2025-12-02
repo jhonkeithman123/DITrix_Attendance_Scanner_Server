@@ -31,7 +31,7 @@ export async function createSession(
   const sql = `
     INSERT INTO sessions
       (id, user_id, date, created_at, updated_at, expires_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       user_id = VALUES(user_id),
       date = VALUES(date),
