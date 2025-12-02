@@ -174,9 +174,28 @@ export async function createUser({
   console.table(result);
 
   // prefer insertId (mysql2). fallback to common alternatives if present.
-  const rawInsertId =
+  let rawInsertId =
     result && (result.insertId ?? result.insertid ?? result.id ?? null);
-  const insertId = rawInsertId != null ? String(rawInsertId) : null;
+
+  // Defensive: if insertId is missing or suspicious (2147483647 or 0) try to query the row by email.
+  const suspiciousIds = new Set([null, undefined, 0, 2147483647]);
+  if (
+    suspiciousIds.has(rawInsertId) ||
+    (typeof rawInsertId === "number" && rawInsertId < 0)
+  ) {
+    console.warn(
+      "createUser: suspicious insertId:",
+      rawInsertId,
+      "— falling back to SELECT by email"
+    );
+    const row = await get<RawUserRow>(
+      `SELECT id FROM users WHERE email = ? ORDER BY created_at DESC LIMIT 1`,
+      [email]
+    );
+    rawInsertId = row ? row.id : rawInsertId;
+  }
+
+  const insertId = rawInsertId != null ? String(rawInsertId) : "";
 
   return {
     id: insertId ?? "",
