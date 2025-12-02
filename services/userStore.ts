@@ -161,7 +161,7 @@ export async function createUser({
   const sql = `INSERT INTO users (email, password_hash, name, avatar_url, created_at)
       VALUES (?, ?, ?, ?, ?)`;
   const [res]: any = await db.query(sql, [email, passwordHash, name, "", now]);
-  const insertId = res && res.insertId ? String(res.insertId) : null;
+  const insertId = res && res.id ? String(res.id) : null;
 
   return {
     id: insertId ?? "",
