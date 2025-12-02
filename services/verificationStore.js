@@ -1,24 +1,26 @@
 import { run, get } from "./userStore.js";
 
 /**
- * Return verification row or null
- * { email, code, expires_at, attempts, created_at }
+ * Return latest verification row for email or null
+ * { id, email, code, expires_at, attempts, created_at }
  */
 export async function getVerification(email) {
   return get(
-    `SELECT email, code, expires_at, attempts, created_at
+    `SELECT id, email, code, expires_at, attempts, created_at
      FROM email_verifications
-     WHERE email = ? LIMIT 1`,
+     WHERE email = ?
+     ORDER BY id DESC
+     LIMIT 1`,
     [email]
   );
 }
 
 /**
- * Insert a verification code only if there's no unexpired code (unless force=true).
+ * Insert a verification code. If a non-expired code exists and force=false, keep it.
  * Returns the active row after operation.
  *
- * - If a non-expired code exists and force=false, it is kept and returned.
- * - Otherwise the function inserts/updates to the provided code/expires and returns that row.
+ * Note: schema requires created_at (NOT NULL), so we use NOW().
+ * expiresIso should be a MySQL DATETIME string or null.
  */
 export async function upsertVerification(
   email,
@@ -37,16 +39,10 @@ export async function upsertVerification(
     }
   }
 
-  // MySQL-compatible upsert (requires email to be PRIMARY KEY or UNIQUE)
   await run(
     `INSERT INTO email_verifications (email, code, expires_at, attempts, created_at)
-     VALUES (?, ?, ?, 0, NOW())
-     ON DUPLICATE KEY UPDATE
-       code = VALUES(code),
-       expires_at = VALUES(expires_at),
-       attempts = 0,
-       created_at = VALUES(created_at)`,
-    [email, code, expiresIso]
+     VALUES (?, ?, ?, 0, NOW())`,
+    [email, code, expiresIso || null]
   );
 
   return await getVerification(email);
@@ -56,9 +52,14 @@ export async function deleteVerification(email) {
   await run(`DELETE FROM email_verifications WHERE email = ?`, [email]);
 }
 
+/**
+ * Increment attempts on the latest verification row for the email.
+ */
 export async function incAttempts(email) {
-  await run(
-    `UPDATE email_verifications SET attempts = COALESCE(attempts,0) + 1 WHERE email = ?`,
-    [email]
-  );
+  const row = await getVerification(email);
+  if (!row) return false;
+  await run(`UPDATE email_verifications SET attempts = COALESCE(attempts,0) + 1 WHERE id = ?`, [
+    row.id,
+  ]);
+  return true;
 }
