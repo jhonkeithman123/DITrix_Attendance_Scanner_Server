@@ -51,6 +51,12 @@ router.get("/session", async (req: Request, res: Response) => {
     if (!row) return res.status(401).json({ error: "Invalid session" });
 
     const expiresDate = parseDbDateUtc(row.expires_at as string | null);
+    // treat missing/invalid DB expiry as expired -> delete and reject
+    if (!expiresDate) {
+      await deleteSession(token);
+      return res.status(401).json({ error: "Invalid session" });
+    }
+
     if (expiresDate && expiresDate < new Date()) {
       // session expired -> delete and reject
       await deleteSession(token);
