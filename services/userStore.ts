@@ -1,6 +1,5 @@
 import bcrypt from "bcryptjs";
 import db from "../config/db.js";
-import { v4 as uuidv4 } from "uuid";
 import { parseDbDateUtc, toMySqlDatetimeUTC } from "../utils/sessionUtils.js";
 
 type RawUserRow = {
@@ -14,7 +13,7 @@ type RawUserRow = {
 };
 
 export type PublicProfile = {
-  id: string;
+  id: string | number;
   email: string;
   name: string;
   avatar_url: string;
