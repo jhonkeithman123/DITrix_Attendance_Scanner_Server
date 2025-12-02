@@ -27,6 +27,21 @@ export type PublicProfile = {
 type UserWithHash = PublicProfile & { passwordHash?: string | null };
 
 /**
+ * Normalize db.query result which may be either:
+ * - [rows, fields] (mysql2/promise)
+ * - rows (some wrappers)
+ */
+function rowsFromDb(res: any): any[] {
+  if (Array.isArray(res)) {
+    // mysql2/promise returns [rows, fields]
+    if (res.length > 0 && Array.isArray(res[0])) return res[0];
+    // sometimes query returns rows directly
+    return res;
+  }
+  return [];
+}
+
+/**
  * MySQL-compatible promise helpers (wrap db.query)
  * db.query(...) returns [rows, fields] via mysql2/promise pool
  */
@@ -54,48 +69,56 @@ export const all = async <T = any>(
   return rows || [];
 };
 
-function _mapRow(row: RawUserRow | null): UserWithHash | null {
+function mapRowToUser(row: RawUserRow | null): PublicProfile | null {
   if (!row) return null;
-
   return {
-    id: row.id,
+    id: String(row.id),
     email: row.email,
     name: row.name ?? "",
     avatar_url: row.avatar_url ?? "",
     created_at: row.created_at ?? null,
-    passwordHash: row.password_hash ?? null,
   };
 }
 
-export async function findByEmail(email: string): Promise<UserWithHash | null> {
+export async function findByEmail(
+  email: string
+): Promise<(PublicProfile & { passwordHash?: string | null }) | null> {
   const row = await get<RawUserRow>(
     `SELECT id, email, name, avatar_url, password_hash, created_at
      FROM users WHERE email = ? LIMIT 1`,
     [email]
   );
-  return _mapRow(row);
+  if (!row) return null;
+  return {
+    ...mapRowToUser(row)!,
+    passwordHash: row.password_hash ?? null,
+  };
 }
 
 /**
- *
- * @param {param} -> The columns in the table ex 'email', 'name', etc.
- * @param {value} -> The variable you will insert.
+ * NOTE: param must be trusted/validated by caller to avoid SQL injection.
  */
 export async function findOneBy(
   param: string,
   value: any
-): Promise<UserWithHash | null> {
-  const row = await get(`SELECT * FROM users WHERE ${param} = ? LIMIT 1`, [
-    value,
-  ]);
-
-  return _mapRow(row);
+): Promise<(PublicProfile & { passwordHash?: string | null }) | null> {
+  const row = await get<RawUserRow>(
+    `SELECT * FROM users WHERE ${param} = ? LIMIT 1`,
+    [value]
+  );
+  if (!row) return null;
+  return {
+    ...mapRowToUser(row)!,
+    passwordHash: row.password_hash ?? null,
+  };
 }
 
 /**
  * Find user by id (returns public profile or null)
  */
-export async function findById(id: string): Promise<{
+export async function findById(
+  id: string
+): Promise<{
   id: string;
   email: string;
   name?: string | null;
@@ -109,10 +132,10 @@ export async function findById(id: string): Promise<{
   );
   if (!row) return null;
   return {
-    id: row.id,
+    id: String(row.id),
     email: row.email,
-    name: row.name,
-    avatar_url: row.avatar_url,
+    name: row.name ?? "",
+    avatar_url: row.avatar_url ?? "",
     verified: !!row.verified,
   };
 }
@@ -148,10 +171,13 @@ export async function createUser({
   };
 }
 
+/**
+ * Verify credentials - returns PublicProfile on success or null.
+ */
 export async function verifyPassword(
   email: string,
   password: string
-): Promise<RawUserRow | null> {
+): Promise<PublicProfile | null> {
   const row = await get<RawUserRow>(
     `SELECT id, email, name, avatar_url, password_hash, created_at
         FROM users WHERE email = ? LIMIT 1`,
@@ -163,18 +189,11 @@ export async function verifyPassword(
 
   if (!ok) return null;
 
-  return {
-    id: String(row.id),
-    email: row.email,
-    name: row.name,
-    avatar_url: row.avatar_url ?? null,
-    created_at: row.created_at ?? null,
-  };
+  return mapRowToUser(row);
 }
 
 /**
  * Update user's password (hashes) by email.
- * Throws if DB error occures or user not found.
  */
 export async function updatePasswordByEmail(
   email: string,
@@ -203,11 +222,11 @@ export async function updatePasswordByEmail(
 export async function updateProfileById(
   id: string,
   { name, avatar_url }: { name?: string; avatar_url?: string }
-): Promise<RawUserRow | null> {
+): Promise<PublicProfile | null> {
   if (!id) throw new Error("Missing id");
   const now = new Date().toISOString().slice(0, 19).replace("T", " ");
-  const sets = [];
-  const params = [];
+  const sets: string[] = [];
+  const params: any[] = [];
   if (name !== undefined) {
     sets.push("name = ?");
     params.push(name);
@@ -222,21 +241,10 @@ export async function updateProfileById(
     ", "
   )}, updated_at = ? WHERE id = ?`;
   await run(sql, params);
-  const row = await get<{
-    id: string;
-    email: string;
-    name: string;
-    avatar_url?: string;
-    verified: boolean;
-  }>(`SELECT id, email, name, avatar_url, verified FROM users WHERE id = ?`, [
-    id,
-  ]);
+  const row = await get<RawUserRow>(
+    `SELECT id, email, name, avatar_url, verified FROM users WHERE id = ?`,
+    [id]
+  );
   if (!row) return null;
-  return {
-    id: String(row.id),
-    email: row.email,
-    name: row.name ?? "",
-    avatar_url: row.avatar_url ?? "",
-    verified: !!row.verified,
-  };
+  return mapRowToUser(row);
 }
