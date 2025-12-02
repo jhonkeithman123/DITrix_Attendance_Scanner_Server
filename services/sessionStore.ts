@@ -1,5 +1,6 @@
 import type { RowDataPacket } from "mysql2/promise";
 import db from "../config/db.js";
+import { toMySqlDatetimeUTC, parseDbDateUtc } from "../utils/sessionUtils.js";
 
 export type SessionRow = {
   id: string;
@@ -9,10 +10,6 @@ export type SessionRow = {
   updated_at?: string | null;
   expires_at?: string | null;
 };
-
-function toMySqlDatetimeUTC(d: Date): string {
-  return new Date(d.getTime()).toISOString().slice(0, 19).replace("T", " ");
-}
 
 /**
  * Store (or replace) a session by token.
@@ -27,7 +24,7 @@ export async function createSession(
   const now = new Date();
   const createdAt = toMySqlDatetimeUTC(now);
   const updatedAt = createdAt;
-  const dateOnly = now.toISOString().slice(0, 10);
+  const dateOnly = createdAt.slice(0, 10);
 
   const sql = `
     INSERT INTO sessions
@@ -44,13 +41,9 @@ export async function createSession(
   if (expiresAt instanceof Date) {
     expiresSql = toMySqlDatetimeUTC(expiresAt);
   } else if (typeof expiresAt === "string" && expiresAt.trim() !== "") {
-    const parsed = new Date(expiresAt);
-    if (!isNaN(parsed.getTime())) {
+    const parsed = parseDbDateUtc(expiresAt);
+    if (parsed) {
       expiresSql = toMySqlDatetimeUTC(parsed);
-    } else {
-      // try replacing space -> T and assume UTC
-      const alt = new Date(expiresAt.replace(" ", "T") + "Z");
-      if (!isNaN(alt.getTime())) expiresSql = toMySqlDatetimeUTC(alt);
     }
   }
 
@@ -100,15 +93,11 @@ export async function extendSession(
   if (!rec) return null;
 
   const newExpires = new Date(Date.now() + ttlSeconds * 1000);
-  const newExpiresSql = newExpires.toISOString().slice(0, 19).replace("T", " ");
+  const newExpiresSql = toMySqlDatetimeUTC(newExpires);
 
   await db.query(
     "UPDATE sessions SET expires_at = ?, updated_at = ? WHERE id = ?",
-    [
-      newExpiresSql,
-      new Date().toISOString().slice(0, 19).replace("T", " "),
-      token,
-    ]
+    [newExpiresSql, toMySqlDatetimeUTC(new Date()), token]
   );
   return newExpires.toISOString();
 }

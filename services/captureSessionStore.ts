@@ -1,3 +1,4 @@
+import { toMySqlDatetimeUTC } from "../utils/sessionUtils.js";
 import { run, get, all } from "./userStore.js";
 import { v4 as uuidv4 } from "uuid";
 
@@ -31,7 +32,7 @@ export async function upsertCapturesForUser(
 ): Promise<number> {
   if (!Array.isArray(captures) || captures.length === 0) return 0;
 
-  const now = new Date().toISOString().slice(0, 19).replace("T", " ");
+  const now = toMySqlDatetimeUTC(new Date());
   const insertSql = `
     INSERT INTO capture_session
       (id, user_id, subject, date, start_time, end_time, created_at, updated_at)

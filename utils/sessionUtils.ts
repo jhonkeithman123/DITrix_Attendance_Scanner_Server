@@ -7,6 +7,10 @@ export function generateCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+export function toMySqlDatetimeUTC(d: Date): string {
+  return new Date(d.getTime()).toISOString().slice(0, 19).replace("T", " ");
+}
+
 export function generateToken(profile: { id: string; email: string }): string {
   if (process.env.JWT_SECRET) {
     try {

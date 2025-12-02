@@ -1,10 +1,7 @@
 import bcrypt from "bcryptjs";
 import db from "../config/db.js";
 import { v4 as uuidv4 } from "uuid";
-
-type DB = {
-  query: (sql: string, params?: any[]) => Promise<[any[], any]>;
-};
+import { parseDbDateUtc, toMySqlDatetimeUTC } from "../utils/sessionUtils.js";
 
 type RawUserRow = {
   id: string;
@@ -24,8 +21,6 @@ export type PublicProfile = {
   created_at: string | null;
 };
 
-type UserWithHash = PublicProfile & { passwordHash?: string | null };
-
 /**
  * Normalize db.query result which may be either:
  * - [rows, fields] (mysql2/promise)
@@ -39,6 +34,17 @@ function rowsFromDb(res: any): any[] {
     return res;
   }
   return [];
+}
+
+export function isDbDateExpired(raw?: string | null): boolean {
+  const d = parseDbDateUtc(raw);
+  if (!d) return true; // treat missing/invalid as expired
+  return d.getTime() <= Date.now();
+}
+
+export function dbDateToIso(raw?: string | null): string | null {
+  const d = parseDbDateUtc(raw);
+  return d ? d.toISOString() : null;
 }
 
 /**
@@ -116,9 +122,7 @@ export async function findOneBy(
 /**
  * Find user by id (returns public profile or null)
  */
-export async function findById(
-  id: string
-): Promise<{
+export async function findById(id: string): Promise<{
   id: string;
   email: string;
   name?: string | null;
@@ -154,7 +158,7 @@ export async function createUser({
 
   const passwordHash = await bcrypt.hash(password, 10);
   const id = uuidv4();
-  const now = new Date().toISOString().slice(0, 19).replace("T", " ");
+  const now = toMySqlDatetimeUTC(new Date());
 
   await run(
     `INSERT INTO users (id, email, password_hash, name, avatar_url, created_at)
@@ -224,27 +228,37 @@ export async function updateProfileById(
   { name, avatar_url }: { name?: string; avatar_url?: string }
 ): Promise<PublicProfile | null> {
   if (!id) throw new Error("Missing id");
-  const now = new Date().toISOString().slice(0, 19).replace("T", " ");
+
+  const now = toMySqlDatetimeUTC(new Date());
   const sets: string[] = [];
   const params: any[] = [];
+
   if (name !== undefined) {
     sets.push("name = ?");
     params.push(name);
   }
+
   if (avatar_url !== undefined) {
     sets.push("avatar_url = ?");
     params.push(avatar_url);
   }
+
   if (sets.length === 0) return null;
+
   params.push(now, id); // updated_at, where id=?
+
   const sql = `UPDATE users SET ${sets.join(
     ", "
   )}, updated_at = ? WHERE id = ?`;
+
   await run(sql, params);
+
   const row = await get<RawUserRow>(
     `SELECT id, email, name, avatar_url, verified FROM users WHERE id = ?`,
     [id]
   );
+
   if (!row) return null;
+
   return mapRowToUser(row);
 }
