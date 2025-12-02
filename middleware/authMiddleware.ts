@@ -8,7 +8,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 type PublicUser = {
-  id: string;
+  id: string | number;
   email?: string | null;
   name?: string | null;
   avatar_url?: string | null;
