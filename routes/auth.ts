@@ -20,6 +20,11 @@ import {
   deleteSession,
   extendSession,
 } from "../services/sessionStore.js";
+import {
+  generateCode,
+  parseDbDateUtc,
+  generateToken,
+} from "../utils/sessionUtils.js";
 import authMiddleware from "../middleware/authMiddleware.js";
 import db from "../config/db.js";
 import dotenv from "dotenv";
@@ -27,23 +32,6 @@ import jwt from "jsonwebtoken";
 
 dotenv.config();
 const router = express.Router();
-
-function generateCode() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
-
-function generateToken(profile: { id: string; email: string }): string {
-  if (process.env.JWT_SECRET) {
-    try {
-      const payload = { id: profile.id, email: profile.email };
-      return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "7d" });
-    } catch (e) {
-      console.error("JWT sign error:", e);
-      return "fake-jwt-token";
-    }
-  }
-  return "fake-jwt-token";
-}
 
 router.get("/session", async (req: Request, res: Response) => {
   if (!req.dbAvailable && !db.isDbAvailable()) {
@@ -61,7 +49,8 @@ router.get("/session", async (req: Request, res: Response) => {
     const row = await findSessionByToken(token);
     if (!row) return res.status(401).json({ error: "Invalid session" });
 
-    if (row.expires_at && new Date(row.expires_at) < new Date()) {
+    const expiresDate = parseDbDateUtc(row.expires_at as string | null);
+    if (expiresDate && expiresDate < new Date()) {
       // session expired -> delete and reject
       await deleteSession(token);
       return res.status(401).json({ error: "Session expired" });

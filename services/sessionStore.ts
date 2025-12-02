@@ -4,14 +4,15 @@ import db from "../config/db.js";
 export type SessionRow = {
   id: string;
   user_id: string | null;
-  subject?: string | null;
   date?: string | null;
-  start_time?: string | null;
-  end_time?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
   expires_at?: string | null;
 };
+
+function toMySqlDatetimeUTC(d: Date): string {
+  return new Date(d.getTime()).toISOString().slice(0, 19).replace("T", " ");
+}
 
 /**
  * Store (or replace) a session by token.
@@ -24,7 +25,7 @@ export async function createSession(
   extra: Record<string, any> = {}
 ): Promise<boolean> {
   const now = new Date();
-  const createdAt = now.toISOString().slice(0, 19).replace("T", " ");
+  const createdAt = toMySqlDatetimeUTC(now);
   const updatedAt = createdAt;
   const dateOnly = now.toISOString().slice(0, 10);
 
@@ -39,12 +40,19 @@ export async function createSession(
       expires_at = VALUES(expires_at)
   `;
 
-  const expiresSql =
-    expiresAt instanceof Date
-      ? expiresAt.toISOString().slice(0, 19).replace("T", " ")
-      : typeof expiresAt === "string"
-      ? expiresAt
-      : null;
+  let expiresSql: string | null = null;
+  if (expiresAt instanceof Date) {
+    expiresSql = toMySqlDatetimeUTC(expiresAt);
+  } else if (typeof expiresAt === "string" && expiresAt.trim() !== "") {
+    const parsed = new Date(expiresAt);
+    if (!isNaN(parsed.getTime())) {
+      expiresSql = toMySqlDatetimeUTC(parsed);
+    } else {
+      // try replacing space -> T and assume UTC
+      const alt = new Date(expiresAt.replace(" ", "T") + "Z");
+      if (!isNaN(alt.getTime())) expiresSql = toMySqlDatetimeUTC(alt);
+    }
+  }
 
   const params = [
     token,
