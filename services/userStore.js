@@ -79,17 +79,15 @@ export async function createUser({ email, password, name = "" }) {
   if (existing) throw new Error("UserExists");
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const id = Date.now().toString();
   const now = new Date().toISOString().slice(0, 19).replace("T", " ");
 
   await run(
-    `INSERT INTO users (id, email, password_hash, name, avatar_url, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)`,
-    [id, email, passwordHash, name, "", now]
+    `INSERT INTO users (email, password_hash, name, avatar_url, created_at)
+        VALUES (?, ?, ?, ?, ?)`,
+    [email, passwordHash, name, "", now]
   );
 
   return {
-    id,
     email,
     name,
     avatar_url: "",

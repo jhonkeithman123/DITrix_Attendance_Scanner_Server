@@ -48,7 +48,7 @@ router.get("/", (req, res) => {
         <div class="links">
         <a class="btn" href="/auth" title="Auth routes">Auth routes</a>
         <a class="btn" href="/profile" title="Profile routes">Profile</a>
-        <a class="btn primary" href="javascript:void(0)" title="Contact">Need help? Check README</a>
+        <a class="btn primary" href="${"https://github.com/jhonkeithman123/DITrix_Attendance_Scanner/blob/main/README.md"}" title="Contact">Need help? Check README</a>
         </div>
 
         <footer>Server version: ${version} — Listening on ${
