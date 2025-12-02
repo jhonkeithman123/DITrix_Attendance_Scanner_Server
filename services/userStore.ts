@@ -171,6 +171,8 @@ export async function createUser({
       ? qres[0]
       : qres;
 
+  console.table(result);
+
   // prefer insertId (mysql2). fallback to common alternatives if present.
   const rawInsertId =
     result && (result.insertId ?? result.insertid ?? result.id ?? null);
