@@ -1,4 +1,5 @@
-import nodemailer from "nodemailer";
+import nodemailer, { Transporter } from "nodemailer";
+import SMTPTransport from "nodemailer/lib/smtp-transport";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -9,12 +10,13 @@ const BREVO_SENDER_EMAIL =
 const BREVO_SENDER_NAME = process.env.BREVO_SENDER_NAME || "DITrix";
 
 const SMTP_HOST = process.env.SMTP_HOST;
-const SMTP_PORT = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined;
+const SMTP_PORT = process.env.SMTP_PORT
+  ? Number(process.env.SMTP_PORT)
+  : undefined;
 const SMTP_USER = process.env.SMTP_USER || process.env.EMAIL_USER;
 const SMTP_PASS = process.env.SMTP_PASS || process.env.EMAIL_PASS;
 const USE_SMTP_FALLBACK = !BREVO_API_KEY && SMTP_USER && SMTP_PASS;
-
-let smtpTransporter = null;
+let smtpTransporter: Transporter | null = null;
 if (USE_SMTP_FALLBACK) {
   smtpTransporter = nodemailer.createTransport({
     host: SMTP_HOST,
@@ -25,7 +27,7 @@ if (USE_SMTP_FALLBACK) {
     greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT_MS || 15000),
     socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 15000),
     pool: process.env.SMTP_POOL === "true" || false,
-  });
+  } as SMTPTransport.Options);
 
   smtpTransporter
     .verify()
@@ -33,15 +35,28 @@ if (USE_SMTP_FALLBACK) {
       console.log(`SMTP mailer ready (host=${SMTP_HOST}, port=${SMTP_PORT})`)
     )
     .catch((err) =>
-      console.warn("SMTP verify failed — SMTP fallback may not work:", err?.message)
+      console.warn(
+        "SMTP verify failed — SMTP fallback may not work:",
+        err?.message
+      )
     );
 }
 
-async function sendViaBrevo(to, code, type = "verify") {
+type BrevoResponse = Record<string, any> | null;
+type EmailType = "verify" | "reset";
+
+async function sendViaBrevo(
+  to: string,
+  code: string,
+  type: EmailType = "verify"
+): Promise<BrevoResponse> {
   if (!BREVO_API_KEY) throw new Error("BREVO_API_KEY not configured");
 
   const url = "https://api.brevo.com/v3/smtp/email";
-  const subject = type === "reset" ? "DITrix password reset code" : "DITrix email verification code";
+  const subject =
+    type === "reset"
+      ? "DITrix password reset code"
+      : "DITrix email verification code";
   const htmlContent = `
     <div style="font-family:Arial,sans-serif;color:#111">
       <h3>DITrix — Email verification</h3>
@@ -69,7 +84,7 @@ async function sendViaBrevo(to, code, type = "verify") {
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    const e = new Error(`Brevo send failed (${res.status}): ${text}`);
+    const e: any = new Error(`Brevo send failed (${res.status}): ${text}`);
     e.status = res.status;
     throw e;
   }
@@ -79,22 +94,34 @@ async function sendViaBrevo(to, code, type = "verify") {
   return json;
 }
 
-export async function sendVerificationEmail(to, code, type = "verify") {
+export async function sendVerificationEmail(
+  to: string,
+  code: string,
+  type: EmailType = "verify"
+): Promise<any> {
   // prefer Brevo HTTP API
   if (BREVO_API_KEY) {
     try {
       return await sendViaBrevo(to, code, type);
-    } catch (err) {
-      console.warn("Brevo send failed, falling back to SMTP if configured:", err?.message || err);
+    } catch (err: any) {
+      console.warn(
+        "Brevo send failed, falling back to SMTP if configured:",
+        err?.message || err
+      );
       if (!USE_SMTP_FALLBACK) throw err;
     }
   }
 
   if (!smtpTransporter) {
-    throw new Error("No mail transport available (set BREVO_API_KEY or SMTP_* env vars)");
+    throw new Error(
+      "No mail transport available (set BREVO_API_KEY or SMTP_* env vars)"
+    );
   }
 
-  const subject = type === "reset" ? "DITrix password reset code" : "DITrix email verification code";
+  const subject =
+    type === "reset"
+      ? "DITrix password reset code"
+      : "DITrix email verification code";
   const html = `
     <div style="font-family:Arial,sans-serif;color:#111">
         <h3>DITrix — Email verification</h3>
@@ -113,7 +140,7 @@ export async function sendVerificationEmail(to, code, type = "verify") {
     });
     console.log("SMTP verification email sent:", info?.messageId || info);
     return info;
-  } catch (err) {
+  } catch (err: any) {
     console.error("SMTP send failed:", err?.message || err);
     throw err;
   }

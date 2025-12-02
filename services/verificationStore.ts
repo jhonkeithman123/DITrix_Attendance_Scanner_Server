@@ -1,10 +1,22 @@
 import { run, get } from "./userStore.js";
 
 /**
+ * Row shape returned from email_verification
+ */
+type VerificationRow = {
+  id: number;
+  email: string;
+  code: string;
+  expires_at: string | null;
+  attempts: number;
+  created_at: string;
+} | null;
+
+/**
  * Return latest verification row for email or null
  * { id, email, code, expires_at, attempts, created_at }
  */
-export async function getVerification(email) {
+export async function getVerification(email: string): Promise<VerificationRow> {
   return get(
     `SELECT id, email, code, expires_at, attempts, created_at
      FROM email_verifications
@@ -23,16 +35,18 @@ export async function getVerification(email) {
  * expiresIso should be a MySQL DATETIME string or null.
  */
 export async function upsertVerification(
-  email,
-  code,
-  expiresIso,
-  options = { force: false }
-) {
+  email: string,
+  code: string,
+  expiresIso: string | null,
+  options: { force?: boolean } = { force: false }
+): Promise<VerificationRow> {
   const now = new Date();
   const existing = await getVerification(email);
 
   if (!options.force && existing) {
-    const expiresAt = existing.expires_at ? new Date(existing.expires_at) : null;
+    const expiresAt = existing.expires_at
+      ? new Date(existing.expires_at)
+      : null;
     if (expiresAt && expiresAt > now) {
       // keep existing unexpired code
       return existing;
@@ -48,18 +62,19 @@ export async function upsertVerification(
   return await getVerification(email);
 }
 
-export async function deleteVerification(email) {
+export async function deleteVerification(email: string): Promise<void> {
   await run(`DELETE FROM email_verifications WHERE email = ?`, [email]);
 }
 
 /**
  * Increment attempts on the latest verification row for the email.
  */
-export async function incAttempts(email) {
+export async function incAttempts(email: string): Promise<boolean> {
   const row = await getVerification(email);
   if (!row) return false;
-  await run(`UPDATE email_verifications SET attempts = COALESCE(attempts,0) + 1 WHERE id = ?`, [
-    row.id,
-  ]);
+  await run(
+    `UPDATE email_verifications SET attempts = COALESCE(attempts,0) + 1 WHERE id = ?`,
+    [row.id]
+  );
   return true;
 }

@@ -1,12 +1,13 @@
 {
   "name": "ditrix_attendance_scanner",
-  "version": "1.1.0",
+  "version": "1.4.0",
   "main": "app.js",
   "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node app.js",
-    "dev": "nodemon app.js"
+    "dev": "node --loader ts-node/esm ./app.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/app.js",
+    "deploy": "npm run build && npm start"
   },
   "repository": {
     "type": "git",
@@ -21,17 +22,26 @@
   "description": "",
   "devDependencies": {
     "@types/cors": "^2.8.19",
+    "@types/dotenv": "^6.1.1",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^24.10.1",
+    "@types/nodemailer": "^7.0.4",
+    "@types/uuid": "^10.0.0",
     "cors": "^2.8.5",
-    "express": "^5.1.0",
-    "nodemon": "^3.1.10"
+    "express": "^5.2.1",
+    "nodemon": "^3.1.10",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.9.3"
   },
   "dependencies": {
-    "bcryptjs": "^3.0.2",
+    "bcryptjs": "^3.0.3",
     "dotenv": "^17.2.3",
     "jsonwebtoken": "^9.0.2",
+    "math-intrinsics": "^1.1.0",
     "mysql2": "^3.15.3",
-    "nodemailer": "^7.0.10",
-    "sqlite3": "^5.1.7",
-    "url": "^0.11.4"
+    "nodemailer": "^7.0.11",
+    "uuid": "^13.0.0"
   }
 }

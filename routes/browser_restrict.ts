@@ -1,8 +1,8 @@
-import express from "express";
+import express, { Request, Response } from "express";
 
 const router = express.Router();
 
-router.get("/", (req, res) => {
+router.get("/", (req: Request, res: Response) => {
   const version = process.env.npm_package_version || "dev";
   res.status(200).type("html").send(`
     <!doctype html>

@@ -1,6 +1,12 @@
 // ...existing code...
 import dotenv from "dotenv";
 import EventEmitter from "events";
+import type {
+  Pool,
+  PoolOptions,
+  RowDataPacket,
+  FieldPacket,
+} from "mysql2/promise";
 
 dotenv.config();
 
@@ -16,19 +22,19 @@ const IS_SERVERLESS =
   process.env.VERCEL === "1" || process.env.IS_SERVERLESS === "true";
 
 const eventBus = new EventEmitter();
-let pool = null;
+let pool: Pool | null = null;
 let connecting = false;
 let attempts = 0;
 
-function isDbAvailable() {
+function isDbAvailable(): boolean {
   return !!pool;
 }
 
-async function tryConnectOnce() {
+async function tryConnectOnce(): Promise<boolean> {
   try {
     const mysql = await import("mysql2/promise");
 
-    const poolOptions = {
+    const poolOptions: PoolOptions = {
       host: process.env.DB_HOST,
       port: Number(process.env.DB_PORT || 3306),
       user: process.env.DB_USER,
@@ -38,31 +44,29 @@ async function tryConnectOnce() {
       connectionLimit: Number(process.env.DB_CONN_LIMIT || 2), // <-- lowered for serverless
       queueLimit: 0,
       connectTimeout: Number(process.env.DB_CONNECT_TIMEOUT_MS || 10000),
-      ssl:
-        process.env.DB_SSL === "true"
-          ? {
-              rejectUnauthorized:
-                process.env.DB_SSL_REJECT_UNAUTHORIZED === "true",
-            }
-          : false,
     };
 
     if (DB_SSL === "true" || DB_SSL === "1") {
+      // @ts-ignore - mysql2 PoolOptions.ssl accepts a variety of shapes
       poolOptions.ssl = {
         rejectUnauthorized: DB_SSL_REJECT_UNAUTHORIZED === "true",
       };
     } else {
+      // @ts-ignore
       poolOptions.ssl = false;
     }
 
-    pool = mysql.createPool(poolOptions);
+    pool = mysql.createPool(poolOptions) as Pool;
 
     await pool.query("SELECT 1");
     attempts = 0;
-    console.log("DB connected:", `${process.env.DB_HOST}:${process.env.DB_PORT}`);
+    console.log(
+      "DB connected:",
+      `${process.env.DB_HOST}:${process.env.DB_PORT}`
+    );
     eventBus.emit("connected");
     return true;
-  } catch (err) {
+  } catch (err: any) {
     attempts += 1;
     const code = err?.code || err?.message || err;
     console.warn(`DB connect attempt ${attempts} failed:`, code);
@@ -70,12 +74,12 @@ async function tryConnectOnce() {
   }
 }
 
-async function queryWithTimeout(
-  sql,
-  params = [],
-  timeoutMs = 8000,
-  maxRetries = 2
-) {
+async function queryWithTimeout<T = RowDataPacket[]>(
+  sql: string,
+  params: any[] = [],
+  timeoutMs: number = 8000,
+  maxRetries: number = 2
+): Promise<[T, FieldPacket[]] | T> {
   const transientCodes = new Set([
     "ECONNRESET",
     "PROTOCOL_CONNECTION_LOST",
@@ -84,7 +88,7 @@ async function queryWithTimeout(
     "PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR",
   ]);
 
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const start = Date.now();
@@ -112,8 +116,8 @@ async function queryWithTimeout(
           .join(" ")} paramsLen=${params.length}`
       );
 
-      return result;
-    } catch (err) {
+      return result as any;
+    } catch (err: any) {
       const dur = Date.now() - start;
       console.warn(
         `[DB] query ERR (${dur}ms) sql=${sql
@@ -135,9 +139,10 @@ async function queryWithTimeout(
       throw err;
     }
   }
+  throw new Error("DB query failed after retries");
 }
 
-async function connectLoop() {
+async function connectLoop(): Promise<void> {
   if (connecting) return;
   connecting = true;
   console.log("Starting DB connect loop to", process.env.DB_HOST);
@@ -164,19 +169,17 @@ async function connectLoop() {
   }
 }
 
-async function getPool() {
+async function getPool(): Promise<Pool | null> {
   if (pool) return pool;
-  // On serverless platforms attempt a single immediate connect per-request
   if (IS_SERVERLESS) {
     await tryConnectOnce();
     return pool;
   }
-  // otherwise attempt immediate connect once (non-blocking for callers)
   await tryConnectOnce();
   return pool;
 }
 
-async function query(sql, params = []) {
+async function query(sql: string, params: any[] = []): Promise<any> {
   return queryWithTimeout(sql, params);
 }
 
@@ -186,7 +189,9 @@ if (!IS_SERVERLESS) {
     console.error("DB connect loop error:", err?.message || err);
   });
 } else {
-  console.log("Serverless mode detected: DB background loop disabled (will try per-request).");
+  console.log(
+    "Serverless mode detected: DB background loop disabled (will try per-request)."
+  );
 }
 
 export default {
@@ -194,5 +199,5 @@ export default {
   query,
   isDbAvailable,
   tryConnectOnce,
-  on: (ev, cb) => eventBus.on(ev, cb),
+  on: (ev: string, cb: (...args: any[]) => void) => eventBus.on(ev, cb),
 };

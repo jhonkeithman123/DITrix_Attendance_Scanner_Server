@@ -1,5 +1,5 @@
 // ...existing code...
-import express from "express";
+import express, { Express } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 
@@ -8,11 +8,10 @@ import routerAuth from "./routes/auth.js";
 import routerProfile from "./routes/profile.js";
 import routerSync from "./routes/sync.js";
 import health from "./routes/health.js";
-
 import dbCheck from "./middleware/db_check.js";
 
 dotenv.config();
-const app = express();
+const app: Express = express();
 app.use(cors());
 app.use(express.json());
 
@@ -25,14 +24,12 @@ app.use("/sync", routerSync);
 app.use("/profile", routerProfile);
 app.use("/health", health);
 
-// export app so serverless platforms (Vercel) can import it as a handler
-export default app;
-
-const IS_SERVERLESS = process.env.VERCEL === "1" || process.env.IS_SERVERLESS === "true";
+const IS_SERVERLESS =
+  process.env.VERCEL === "1" || process.env.IS_SERVERLESS === "true";
 
 if (!IS_SERVERLESS) {
   // start long-running server and background DB init
-  async function start() {
+  async function start(): Promise<void> {
     const PORT = process.env.PORT || 3000;
     app.listen(PORT, () =>
       console.log(`Server listening on http://localhost:${PORT}`)
@@ -44,5 +41,9 @@ if (!IS_SERVERLESS) {
     process.exit(1);
   });
 } else {
-  console.log("Serverless mode: app exported for platform (no listen(), no background loops).");
+  console.log(
+    "Serverless mode: app exported for platform (no listen(), no background loops)."
+  );
 }
+
+export default app;

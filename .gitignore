@@ -2,3 +2,4 @@
 .env
 /data/*.sqlite
 /data/*.sqlite-journal
+/dist

@@ -1,10 +1,28 @@
+import type { RowDataPacket } from "mysql2/promise";
 import db from "../config/db.js";
+
+export type SessionRow = {
+  id: string;
+  user_id: string | null;
+  subject?: string | null;
+  date?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  expires_at?: string | null;
+};
 
 /**
  * Store (or replace) a session by token.
  * Uses INSERT ... ON DUPLICATE KEY UPDATE for upsert.
  */
-export async function createSession(token, userId, expiresAt = null, extra = {}) {
+export async function createSession(
+  token: string,
+  userId: string | number,
+  expiresAt: string | Date | null = null,
+  extra: Record<string, any> = {}
+): Promise<boolean> {
   const now = new Date();
   const createdAt = now.toISOString().slice(0, 19).replace("T", " ");
   const updatedAt = createdAt;
@@ -24,6 +42,13 @@ export async function createSession(token, userId, expiresAt = null, extra = {})
       expires_at = VALUES(expires_at)
   `;
 
+  const expiresSql =
+    expiresAt instanceof Date
+      ? expiresAt.toISOString().slice(0, 19).replace("T", " ")
+      : typeof expiresAt === "string"
+      ? expiresAt
+      : null;
+
   const params = [
     token,
     String(userId),
@@ -33,37 +58,51 @@ export async function createSession(token, userId, expiresAt = null, extra = {})
     extra.end_time || null,
     createdAt,
     updatedAt,
-    expiresAt ? new Date(expiresAt).toISOString().slice(0, 19).replace("T", " ") : null,
+    expiresAt
+      ? new Date(expiresAt).toISOString().slice(0, 19).replace("T", " ")
+      : null,
   ];
 
   await db.query(sql, params);
   return true;
 }
 
-export async function findSessionByToken(token) {
-  const [rows] = await db.query("SELECT * FROM sessions WHERE id = ? LIMIT 1", [token]);
+export async function findSessionByToken(
+  token: string
+): Promise<RowDataPacket | null> {
+  const [rows] = await db.query("SELECT * FROM sessions WHERE id = ? LIMIT 1", [
+    token,
+  ]);
   return rows && rows.length ? rows[0] : null;
 }
 
-export async function deleteSession(token) {
+export async function deleteSession(token: string): Promise<void> {
   await db.query("DELETE FROM sessions WHERE id = ?", [token]);
 }
 
-export async function deleteSessionsByUser(userId) {
+export async function deleteSessionsByUser(
+  userId: string | number
+): Promise<void> {
   await db.query("DELETE FROM sessions WHERE user_id = ?", [String(userId)]);
 }
 
 // extend/refresh an existing session's expires_at
-export async function extendSession(token, ttlSeconds = 7 * 24 * 60 * 60) {
+export async function extendSession(
+  token: string,
+  ttlSeconds = 7 * 24 * 60 * 60
+): Promise<string | null> {
   if (!token) throw new Error("Missing token");
   const rec = await findSessionByToken(token);
   if (!rec) return null;
   const newExpires = new Date(Date.now() + ttlSeconds * 1000);
   const newExpiresSql = newExpires.toISOString().slice(0, 19).replace("T", " ");
-  await db.query("UPDATE sessions SET expires_at = ?, updated_at = ? WHERE id = ?", [
-    newExpiresSql,
-    new Date().toISOString().slice(0, 19).replace("T", " "),
-    token,
-  ]);
+  await db.query(
+    "UPDATE sessions SET expires_at = ?, updated_at = ? WHERE id = ?",
+    [
+      newExpiresSql,
+      new Date().toISOString().slice(0, 19).replace("T", " "),
+      token,
+    ]
+  );
   return newExpires.toISOString();
 }

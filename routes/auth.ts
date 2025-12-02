@@ -1,4 +1,4 @@
-import express from "express";
+import express, { Request, Response } from "express";
 import {
   createUser,
   findByEmail,
@@ -32,7 +32,7 @@ function generateCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-function generateToken(profile) {
+function generateToken(profile: { id: string; email: string }): string {
   if (process.env.JWT_SECRET) {
     try {
       const payload = { id: profile.id, email: profile.email };
@@ -45,9 +45,13 @@ function generateToken(profile) {
   return "fake-jwt-token";
 }
 
-router.get("/session", async (req, res) => {
+router.get("/session", async (req: Request, res: Response) => {
+  if (!req.dbAvailable && !db.isDbAvailable()) {
+    return res.status(503).json({ error: "Database unavailable" });
+  }
+
   try {
-    const auth = req.headers.authorization || "";
+    const auth = (req.headers.authorization || "").toString();
     if (!auth.startsWith("Bearer "))
       return res.status(401).json({ error: "Missing token" });
 
@@ -95,10 +99,14 @@ router.get("/session", async (req, res) => {
 // POST /auth/refresh
 // Verifies token (via middleware) and extends session expiry in DB.
 // Returns { expiresAt: ISOString } on success.
-router.post("/refresh", authMiddleware, async (req, res) => {
+router.post("/refresh", authMiddleware, async (req: Request, res: Response) => {
+  if (!req.dbAvailable && !db.isDbAvailable()) {
+    return res.status(503).json({ error: "Database unavailable" });
+  }
+
   try {
     const token =
-      req.authToken || (req.headers.authorization || "").split(" ")[1];
+      (req as any).authToken || (req.headers.authorization || "").split(" ")[1];
     if (!token) return res.status(400).json({ error: "Missing token" });
 
     const ttl = process.env.JWT_TTL
@@ -115,7 +123,11 @@ router.post("/refresh", authMiddleware, async (req, res) => {
   }
 });
 
-router.post("/login", async (req, res) => {
+router.post("/login", async (req: Request, res: Response) => {
+  if (!req.dbAvailable && !db.isDbAvailable()) {
+    return res.status(503).json({ error: "Database unavailable" });
+  }
+
   const { email, password } = req.body || {};
   console.table(req.body);
   if (!email || !password) {
@@ -158,7 +170,11 @@ router.post("/login", async (req, res) => {
   }
 });
 
-router.post("/signup", async (req, res) => {
+router.post("/signup", async (req: Request, res: Response) => {
+  if (!req.dbAvailable && !db.isDbAvailable()) {
+    return res.status(503).json({ error: "Database unavailable" });
+  }
+
   const { email, password, name } = req.body || {};
   if (!email || !password) {
     return res.status(400).json({ error: "Email and password required" });
@@ -191,10 +207,10 @@ router.post("/signup", async (req, res) => {
       force: false,
     });
 
-    const codeToSend = row.code;
+    const codeToSend = row?.code;
 
     try {
-      await sendVerificationEmail(email, codeToSend);
+      await sendVerificationEmail(email, codeToSend as string);
       console.log("Email verification code sent");
 
       return res.status(201).json({
@@ -225,7 +241,11 @@ router.post("/signup", async (req, res) => {
   }
 });
 
-router.post("/resend", async (req, res) => {
+router.post("/resend", async (req: Request, res: Response) => {
+  if (!req.dbAvailable && !db.isDbAvailable()) {
+    return res.status(503).json({ error: "Database unavailable" });
+  }
+
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: "Email required" });
 
@@ -235,7 +255,7 @@ router.post("/resend", async (req, res) => {
 
     const existing = await getVerification(email);
     const now = new Date();
-    let codeToSend;
+    let codeToSend: string | undefined;
     if (
       existing &&
       existing.expires_at &&
@@ -251,11 +271,11 @@ router.post("/resend", async (req, res) => {
       const row = await upsertVerification(email, code, expires, {
         force: true,
       });
-      codeToSend = row.code;
+      codeToSend = row?.code;
     }
 
     try {
-      await sendVerificationEmail(email, codeToSend);
+      await sendVerificationEmail(email, codeToSend as string);
       return res.json({ status: "ok", notice: "verification_sent" });
     } catch (mailErr) {
       console.error("resend mail error:", mailErr);
@@ -269,7 +289,11 @@ router.post("/resend", async (req, res) => {
   }
 });
 
-router.post("/verify", async (req, res) => {
+router.post("/verify", async (req: Request, res: Response) => {
+  if (!req.dbAvailable && !db.isDbAvailable()) {
+    return res.status(503).json({ error: "Database unavailable" });
+  }
+
   const { email, code } = req.body || {};
   if (!email || !code)
     return res.status(400).json({ error: "Email and code required" });
@@ -289,16 +313,12 @@ router.post("/verify", async (req, res) => {
       return res.status(400).json({ error: "Invalid code" });
     }
 
-    await new Promise((resolve, reject) => {
-      db.run(
-        `UPDATE users SET verified = 1 WHERE email = ?`,
-        [email],
-        function (err) {
-          if (err) return reject(err);
-          resolve(this);
-        }
-      );
-    });
+    try {
+      await db.query(`UPDATE users SET verified = 1 WHERE email = ?`, [email]);
+    } catch (e) {
+      console.error("Failed to update user verified flag:", e);
+      return res.status(500).json({ error: "Failed to verified account" });
+    }
 
     await deleteVerification(email);
     return res.status(200).json({ status: "ok", message: "verified" });
@@ -308,7 +328,11 @@ router.post("/verify", async (req, res) => {
   }
 });
 
-router.post("/forgot", async (req, res) => {
+router.post("/forgot", async (req: Request, res: Response) => {
+  if (!req.dbAvailable && !db.isDbAvailable()) {
+    return res.status(503).json({ error: "Database unavailable" });
+  }
+
   const { email } = req.body;
   if (!email) {
     return res.status(400).json({ error: "Email is required" });
@@ -362,8 +386,12 @@ router.post("/forgot", async (req, res) => {
   }
 });
 
-router.patch("/reset", async (req, res) => {
-  const { email, code, newPassword } = req.body;
+router.patch("/reset", async (req: Request, res: Response) => {
+  if (!req.dbAvailable && !db.isDbAvailable()) {
+    return res.status(503).json({ error: "Database unavailable" });
+  }
+
+  const { email, code, newPassword } = req.body || {};
   console.table(req.body);
   if (!email || !code || !newPassword) {
     return res
