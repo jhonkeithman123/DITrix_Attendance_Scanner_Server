@@ -3,7 +3,7 @@ import db from "../config/db.js";
 import { toMySqlDatetimeUTC, parseDbDateUtc } from "../utils/sessionUtils.js";
 
 export type SessionRow = {
-  id: string;
+  id: string | number;
   user_id: string | null;
   date?: string | null;
   created_at?: string | null;

@@ -11,7 +11,10 @@ export function toMySqlDatetimeUTC(d: Date): string {
   return new Date(d.getTime()).toISOString().slice(0, 19).replace("T", " ");
 }
 
-export function generateToken(profile: { id: string; email: string }): string {
+export function generateToken(profile: {
+  id: string | number;
+  email: string;
+}): string {
   if (process.env.JWT_SECRET) {
     try {
       const payload = { id: profile.id, email: profile.email };

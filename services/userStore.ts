@@ -3,7 +3,7 @@ import db from "../config/db.js";
 import { parseDbDateUtc, toMySqlDatetimeUTC } from "../utils/sessionUtils.js";
 
 type RawUserRow = {
-  id: string;
+  id: string | number;
   email: string;
   name?: string | null;
   avatar_url?: string | null;
@@ -121,8 +121,8 @@ export async function findOneBy(
 /**
  * Find user by id (returns public profile or null)
  */
-export async function findById(id: string): Promise<{
-  id: string;
+export async function findById(id: string | number): Promise<{
+  id: string | number;
   email: string;
   name?: string | null;
   avatar_url?: string | null;
@@ -221,7 +221,7 @@ export async function updatePasswordByEmail(
 }
 
 export async function updateProfileById(
-  id: string,
+  id: string | number,
   { name, avatar_url }: { name?: string; avatar_url?: string }
 ): Promise<PublicProfile | null> {
   if (!id) throw new Error("Missing id");

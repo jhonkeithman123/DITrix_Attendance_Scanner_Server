@@ -23,6 +23,7 @@ import {
 import {
   generateCode,
   parseDbDateUtc,
+  toMySqlDatetimeUTC,
   generateToken,
 } from "../utils/sessionUtils.js";
 import authMiddleware from "../middleware/authMiddleware.js";
@@ -134,7 +135,9 @@ router.post("/login", async (req: Request, res: Response) => {
       const ttlSeconds = process.env.JWT_TTL
         ? parseInt(process.env.JWT_TTL, 10)
         : 7 * 24 * 60 * 60;
-      const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
+      const expiresAt = toMySqlDatetimeUTC(
+        new Date(Date.now() + ttlSeconds * 1000)
+      );
       await createSession(token, profile.id, expiresAt);
     } catch (e) {
       console.error("Failed to persist session:", e);
@@ -191,7 +194,7 @@ router.post("/signup", async (req: Request, res: Response) => {
     const user = await createUser({ email, password, name: name || "" });
 
     const code = generateCode();
-    const expires = new Date(Date.now() + 1000 * 60 * 15).toISOString();
+    const expires = toMySqlDatetimeUTC(new Date(Date.now() + 1000 * 60 * 15));
     const row = await upsertVerification(email, code, expires, {
       force: false,
     });
@@ -245,22 +248,24 @@ router.post("/resend", async (req: Request, res: Response) => {
     const existing = await getVerification(email);
     const now = new Date();
     let codeToSend: string | undefined;
-    if (
-      existing &&
-      existing.expires_at &&
-      new Date(existing.expires_at) > now
-    ) {
-      return res.status(201).json({
-        status: "ok",
-        message: "Interruption detected. You can enter the previous code.",
-      });
-    } else {
-      const code = generateCode();
-      const expires = new Date(Date.now() + 1000 * 60 * 15).toISOString();
-      const row = await upsertVerification(email, code, expires, {
-        force: true,
-      });
-      codeToSend = row?.code;
+
+    if (existing && existing.expires_at) {
+      const existingExpires = parseDbDateUtc(existing.expires_at);
+      if (existingExpires && existingExpires > now) {
+        return res.status(201).json({
+          status: "ok",
+          message: "Interruption detected. You can enter the previous code.",
+        });
+      } else {
+        const code = generateCode();
+        const expires = toMySqlDatetimeUTC(
+          new Date(Date.now() + 1000 * 60 * 15)
+        );
+        const row = await upsertVerification(email, code, expires, {
+          force: true,
+        });
+        codeToSend = row?.code;
+      }
     }
 
     try {
@@ -291,7 +296,7 @@ router.post("/verify", async (req: Request, res: Response) => {
     const row = await getVerification(email);
     if (!row) return res.status(400).json({ error: "No verification pending" });
 
-    const expiresAt = row.expires_at ? new Date(row.expires_at) : null;
+    const expiresAt = row.expires_at ? parseDbDateUtc(row.expires_at) : null;
     if (expiresAt && expiresAt < new Date()) {
       await deleteVerification(email);
       return res.status(400).json({ error: "Code expired" });
@@ -341,21 +346,20 @@ router.post("/forgot", async (req: Request, res: Response) => {
     // Reuse active code if present
     const existing = await getVerification(email);
     const now = new Date();
-    if (
-      existing &&
-      existing.expires_at &&
-      new Date(existing.expires_at) > now
-    ) {
-      return res.status(200).json({
-        status: "ok",
-        notice: "code_active",
-        message: "A reset code is already active. Please check your email.",
-      });
+    if (existing && existing.expires_at) {
+      const existingExpires = parseDbDateUtc(existing.expires_at);
+      if (existingExpires && existingExpires > now) {
+        return res.status(200).json({
+          status: "ok",
+          notice: "code_active",
+          message: "A reset code is already active. Please check your email.",
+        });
+      }
     }
 
     // create and send a new reset code
     const code = generateCode();
-    const expires = new Date(Date.now() + 1000 * 60 * 15).toISOString();
+    const expires = toMySqlDatetimeUTC(new Date(Date.now() + 1000 * 60 * 15));
     await upsertVerification(email, code, expires, { force: true });
 
     try {
@@ -392,7 +396,7 @@ router.patch("/reset", async (req: Request, res: Response) => {
     const row = await getVerification(email);
     if (!row) return res.status(400).json({ error: "No reset pending" });
 
-    const expiresAt = row.expires_at ? new Date(row.expires_at) : null;
+    const expiresAt = row.expires_at ? parseDbDateUtc(row.expires_at) : null;
     if (expiresAt && expiresAt < new Date()) {
       await deleteVerification(email);
       return res.status(400).json({ error: "Invalid code" });
