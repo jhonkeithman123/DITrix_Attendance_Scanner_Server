@@ -3,7 +3,8 @@ import db from "../config/db.js";
 import { toMySqlDatetimeUTC, parseDbDateUtc } from "../utils/sessionUtils.js";
 
 export type SessionRow = {
-  id: string | number;
+  id: number; // auto-increment
+  token: string; // JWT (varchar 255)
   user_id: string | null;
   date?: string | null;
   created_at?: string | null;
@@ -28,13 +29,14 @@ export async function createSession(
 
   const sql = `
     INSERT INTO sessions
-      (id, user_id, date, created_at, updated_at, expires_at)
+      (token, user_id, date, created_at, updated_at, expires_at)
     VALUES (?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       user_id = VALUES(user_id),
       date = VALUES(date),
       updated_at = VALUES(updated_at),
-      expires_at = VALUES(expires_at)
+      expires_at = VALUES(expires_at),
+      token = VALUES(token)
   `;
 
   let expiresSql: string | null = null;
@@ -48,8 +50,8 @@ export async function createSession(
   }
 
   const params = [
-    token,
-    String(userId),
+    token, // token
+    String(userId), // user_id
     extra.date ?? dateOnly,
     createdAt,
     updatedAt,
@@ -64,7 +66,7 @@ export async function findSessionByToken(
   token: string
 ): Promise<RowDataPacket | null> {
   const res: any = await db.query(
-    "SELECT * FROM sessions WHERE id = ? LIMIT 1",
+    "SELECT * FROM sessions WHERE token = ? LIMIT 1",
     [token]
   );
   const rows = Array.isArray(res) && Array.isArray(res[0]) ? res[0] : res;
@@ -73,7 +75,7 @@ export async function findSessionByToken(
 }
 
 export async function deleteSession(token: string): Promise<void> {
-  await db.query("DELETE FROM sessions WHERE id = ?", [token]);
+  await db.query("DELETE FROM sessions WHERE token = ?", [token]);
 }
 
 export async function deleteSessionsByUser(
@@ -96,7 +98,7 @@ export async function extendSession(
   const newExpiresSql = toMySqlDatetimeUTC(newExpires);
 
   await db.query(
-    "UPDATE sessions SET expires_at = ?, updated_at = ? WHERE id = ?",
+    "UPDATE sessions SET expires_at = ?, updated_at = ? WHERE token = ?",
     [newExpiresSql, toMySqlDatetimeUTC(new Date()), token]
   );
   return newExpires.toISOString();
