@@ -2,6 +2,7 @@ import express, { Request, Response } from "express";
 import authMiddleware from "../middleware/authMiddleware.js";
 import { findById, updateProfileById } from "../services/userStore.js";
 import db from "../config/db.js";
+import { DBAvailable } from "../middleware/db_check.js";
 
 const router = express.Router();
 
@@ -14,9 +15,7 @@ router
   .all(authMiddleware)
   // GET /profile -> return current user's profile
   .get(async (req: AuthRequest, res: Response) => {
-    if (!req.dbAvailable && !db.isDbAvailable()) {
-      return res.status(503).json({ error: "Database unavailable" });
-    }
+    if (!DBAvailable(req, res)) return;
 
     try {
       const userId = req.user?.id;
@@ -33,9 +32,7 @@ router
   })
   // PUT /profile -> update name/avatar (body: { name, avatarBase64 })
   .put(async (req: AuthRequest, res: Response) => {
-    if (!req.dbAvailable && !db.isDbAvailable()) {
-      return res.status(503).json({ error: "Database unavailable" });
-    }
+    if (!DBAvailable(req, res)) return;
 
     try {
       const userId = req.user?.id;

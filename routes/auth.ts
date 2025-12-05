@@ -26,6 +26,7 @@ import {
   toMySqlDatetimeUTC,
   generateToken,
 } from "../utils/sessionUtils.js";
+import { DBAvailable } from "../middleware/db_check.js";
 import authMiddleware from "../middleware/authMiddleware.js";
 import db from "../config/db.js";
 import dotenv from "dotenv";
@@ -34,10 +35,13 @@ import jwt from "jsonwebtoken";
 dotenv.config();
 const router = express.Router();
 
+//* Temporary route to debug session
+router.get("/debug/session-by-token", async (req: Request, res: Response) => {
+  if (!DBAvailable(req, res)) return;
+});
+
 router.get("/session", async (req: Request, res: Response) => {
-  if (!req.dbAvailable && !db.isDbAvailable()) {
-    return res.status(503).json({ error: "Database unavailable" });
-  }
+  if (!DBAvailable(req, res)) return;
 
   try {
     const auth = (req.headers.authorization || "").toString();
@@ -46,19 +50,41 @@ router.get("/session", async (req: Request, res: Response) => {
 
     const token = auth.split(" ")[1];
 
+    console.log("[auth/session] token(head):", token.slice(0, 12));
+
     // check session db
     const row = await findSessionByToken(token);
-    if (!row) return res.status(401).json({ error: "Invalid session" });
+    console.log("[auth/session] db match:", !!row, "row:", row);
+    if (!row) {
+      console.warn("[auth/session] no session row found -> invalid session");
+      return res.status(401).json({ error: "Invalid session" });
+    }
 
     const expiresDate = parseDbDateUtc(row.expires_at as string | null);
+    console.log(
+      "[auth/session] expires_at raw:",
+      row.expires_at,
+      "parsed:",
+      expiresDate?.toISOString() ?? null
+    );
 
     // treat missing/invalid DB expiry as expired -> delete and reject
     if (!expiresDate) {
+      console.warn(
+        "[auth/session] invalid/missing expires_at -> deleting session",
+        row.id
+      );
       await deleteSession(token);
       return res.status(401).json({ error: "Invalid session" });
     }
 
     if (expiresDate && expiresDate < new Date()) {
+      console.warn(
+        "[auth/session] session expired at",
+        expiresDate.toISOString(),
+        "now:",
+        new Date().toISOString()
+      );
       // session expired -> delete and reject
       await deleteSession(token);
       return res.status(401).json({ error: "Session expired" });
@@ -68,7 +94,9 @@ router.get("/session", async (req: Request, res: Response) => {
     if (process.env.JWT_SECRET) {
       try {
         jwt.verify(token, process.env.JWT_SECRET);
+        console.log("[auth/session] jwt.verify => ok");
       } catch (e) {
+        console.warn("[auth/session] jwt.verify failed:", e);
         // invalid signature -> delete db row and reject
         await deleteSession(token);
         return res.status(401).json({ error: "Invalid token" });
@@ -76,8 +104,12 @@ router.get("/session", async (req: Request, res: Response) => {
     }
 
     // fetch user profile by user_id
+    console.log("[auth/session] fetching user by id:", row.user_id);
     const user = await findUserById(row.user_id);
-    if (!user) return res.status(404).json({ error: "User not found" });
+    if (!user) {
+      console.warn("[auth/session] user not found for user_id:", row.user_id);
+      return res.status(404).json({ error: "User not found" });
+    }
 
     return res.json({
       status: "ok",
@@ -97,9 +129,7 @@ router.get("/session", async (req: Request, res: Response) => {
 // Verifies token (via middleware) and extends session expiry in DB.
 // Returns { expiresAt: ISOString } on success.
 router.post("/refresh", authMiddleware, async (req: Request, res: Response) => {
-  if (!req.dbAvailable && !db.isDbAvailable()) {
-    return res.status(503).json({ error: "Database unavailable" });
-  }
+  if (!DBAvailable(req, res)) return;
 
   try {
     const token =
@@ -176,9 +206,7 @@ router.post("/login", async (req: Request, res: Response) => {
 });
 
 router.post("/signup", async (req: Request, res: Response) => {
-  if (!req.dbAvailable && !db.isDbAvailable()) {
-    return res.status(503).json({ error: "Database unavailable" });
-  }
+  if (!DBAvailable(req, res)) return;
 
   const { email, password, name } = req.body || {};
   if (!email || !password) {
@@ -247,9 +275,7 @@ router.post("/signup", async (req: Request, res: Response) => {
 });
 
 router.post("/resend", async (req: Request, res: Response) => {
-  if (!req.dbAvailable && !db.isDbAvailable()) {
-    return res.status(503).json({ error: "Database unavailable" });
-  }
+  if (!DBAvailable(req, res)) return;
 
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: "Email required" });
@@ -297,9 +323,7 @@ router.post("/resend", async (req: Request, res: Response) => {
 });
 
 router.post("/verify", async (req: Request, res: Response) => {
-  if (!req.dbAvailable && !db.isDbAvailable()) {
-    return res.status(503).json({ error: "Database unavailable" });
-  }
+  if (!DBAvailable(req, res)) return;
 
   const { email, code } = req.body || {};
   if (!email || !code)
@@ -336,9 +360,7 @@ router.post("/verify", async (req: Request, res: Response) => {
 });
 
 router.post("/forgot", async (req: Request, res: Response) => {
-  if (!req.dbAvailable && !db.isDbAvailable()) {
-    return res.status(503).json({ error: "Database unavailable" });
-  }
+  if (!DBAvailable(req, res)) return;
 
   const { email } = req.body;
   if (!email) {
@@ -393,9 +415,7 @@ router.post("/forgot", async (req: Request, res: Response) => {
 });
 
 router.patch("/reset", async (req: Request, res: Response) => {
-  if (!req.dbAvailable && !db.isDbAvailable()) {
-    return res.status(503).json({ error: "Database unavailable" });
-  }
+  if (!DBAvailable(req, res)) return;
 
   const { email, code, newPassword } = req.body || {};
   console.table(req.body);

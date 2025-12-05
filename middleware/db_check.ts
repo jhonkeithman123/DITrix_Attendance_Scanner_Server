@@ -22,3 +22,12 @@ export default async function dbCheck(
   req.dbAvailable = db.isDbAvailable();
   next();
 }
+
+//* Will return false if db is unavailable, otherwise true
+export function DBAvailable(req: Request, res: Response) {
+  const ok = !!req.dbAvailable || db.isDbAvailable();
+  if (!ok) {
+    res.status(503).json({ error: "DB unavailable" });
+  }
+  return ok;
+}

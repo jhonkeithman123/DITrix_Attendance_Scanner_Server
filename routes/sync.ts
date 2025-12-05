@@ -6,6 +6,7 @@ import {
 } from "../services/captureSessionStore.js";
 import db from "../config/db.js";
 import { v4 as uuidv4 } from "uuid";
+import { DBAvailable } from "../middleware/db_check.js";
 
 type AuthRequest = Request & {
   user?: { id: string };
@@ -20,6 +21,8 @@ router
   .all(authMiddleware)
   // GET /sync/captures -> list captures for authenticated user
   .get(async (req: AuthRequest, res: Response) => {
+    if (!DBAvailable(req, res)) return;
+
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
     try {
@@ -32,9 +35,7 @@ router
   })
   // POST /sync/captures
   .post(async (req: AuthRequest, res: Response) => {
-    if (!req.dbAvailable && !db.isDbAvailable()) {
-      return res.status(503).json({ error: "Database unavailable" });
-    }
+    if (!DBAvailable(req, res)) return;
 
     const raw = req.body?.captures;
     const captures = Array.isArray(raw) ? raw : [];
