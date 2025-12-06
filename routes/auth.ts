@@ -138,6 +138,7 @@ router.post("/logout", async (req: Request, res: Response) => {
     // Delete the session so token becomes invalid
     const result = await findSessionByToken(token);
     if (!result) {
+      console.error("The session from the token is not found:", result);
       return res.status(404).json({ error: "Session not found." });
     }
 
