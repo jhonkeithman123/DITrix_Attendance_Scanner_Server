@@ -51,6 +51,8 @@ router
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
     const { id, subject, date, start_time, end_time, roster } = req.body || {};
+    console.log("[shared-captures/]:");
+    console.table(req.body);
 
     try {
       const { captureId, shareCode } = await createSharedCapture(userId, {
