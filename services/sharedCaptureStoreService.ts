@@ -79,6 +79,17 @@ export async function findSharedCaptureByCode(shareCode: string) {
   return rows && rows.length > 0 ? rows[0] : null;
 }
 
+/// Check if a local capture has already been uploaded (by id)
+export async function captureAlreadyUploaded(
+  captureId: string
+): Promise<boolean> {
+  const rows = await db.query(
+    `SELECT 1 FROM shared_captures WHERE id = ? LIMIT 1`,
+    [captureId]
+  );
+  return rows && rows.length > 0;
+}
+
 export async function addCollaborator(
   captureId: string,
   userId: number,
@@ -107,6 +118,14 @@ export async function getCollaborators(captureId: string) {
          JOIN users u ON cc.user_id = u.id
          WHERE cc.capture_id = ?`,
     [captureId]
+  );
+  return rows || [];
+}
+
+/// Get all students (users) in the system for invitation
+export async function getAllStudents() {
+  const rows = await db.query(
+    `SELECT id, name, email FROM users ORDER BY name ASC`
   );
   return rows || [];
 }

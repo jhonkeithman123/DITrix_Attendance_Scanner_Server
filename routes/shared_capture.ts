@@ -14,6 +14,8 @@ import {
   updateSharedCapture,
   deleteSharedCapture,
   hasAccess,
+  captureAlreadyUploaded,
+  getAllStudents,
 } from "../services/sharedCaptureStoreService.js";
 import { findByEmail } from "../services/userStore.js";
 
@@ -55,6 +57,15 @@ router
     console.table(req.body);
 
     try {
+      // Check if this capture ID already exists
+      const alreadyUploaded = await captureAlreadyUploaded(id);
+      if (alreadyUploaded) {
+        return res.status(409).json({
+          error: "Duplicate upload",
+          message: "This capture session has already been uploaded",
+        });
+      }
+
       const { captureId, shareCode } = await createSharedCapture(userId, {
         id,
         subject,
@@ -229,6 +240,22 @@ router.post("/:id/collaborators", async (req: AuthRequest, res: Response) => {
   } catch (e) {
     console.error("[shared-captures] add collaborator error:", e);
     return res.status(500).json({ error: "Failed to add collaborator" });
+  }
+});
+
+// GET /shared-captures/students/list - Get all students for invitation
+router.get("/students/list", async (req: AuthRequest, res: Response) => {
+  if (!DBAvailable(req, res)) return;
+
+  const userId = parseInt(req.user?.id || "0", 10);
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+  try {
+    const students = await getAllStudents();
+    return res.json({ status: "ok", students });
+  } catch (e) {
+    console.error("[shared-captures] get students error:", e);
+    return res.status(500).json({ error: "Failed to get students" });
   }
 });
 
