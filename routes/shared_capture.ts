@@ -38,8 +38,21 @@ router
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
     try {
-      const captures = await findSharedCapturesByUser(userId);
-      return res.json({ status: "ok", ...captures });
+      const owned = await findSharedCapturesByUser(userId);
+
+      // Flatten the nested arrays and filter out buffer objects
+      const ownedCaptures = (owned.owned || []).filter(
+        (c: any) => c && typeof c === "object" && !c._buf
+      );
+      const sharedCaptures = (owned.shared || []).filter(
+        (c: any) => c && typeof c === "object" && !c._buf
+      );
+
+      return res.json({
+        status: "ok",
+        owned: ownedCaptures,
+        shared: sharedCaptures,
+      });
     } catch (e) {
       console.error("[shared-captures] list error:", e);
       return res.status(500).json({ error: "Failed to list captures" });
