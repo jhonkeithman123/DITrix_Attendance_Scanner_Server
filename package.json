@@ -4,10 +4,10 @@
   "main": "app.js",
   "type": "module",
   "scripts": {
-    "dev": "node --loader ts-node/esm ./app.ts",
+    "dev": "bun --watch app.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/app.js",
-    "deploy": "npm run build && npm start"
+    "start": "bun dist/app.js",
+    "deploy": "bun run build && bun run start"
   },
   "repository": {
     "type": "git",
