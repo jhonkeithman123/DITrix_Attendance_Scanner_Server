@@ -8,6 +8,7 @@ import routerAuth from "./routes/auth.js";
 import routerProfile from "./routes/profile.js";
 import routerSync from "./routes/sync.js";
 import health from "./routes/health.js";
+import routerSharedCaptures from "./routes/shared_capture.js";
 import dbCheck from "./middleware/db_check.js";
 
 dotenv.config();
@@ -23,6 +24,7 @@ app.use("/auth", routerAuth);
 app.use("/sync", routerSync);
 app.use("/profile", routerProfile);
 app.use("/health", health);
+app.use("/shared-captures", routerSharedCaptures);
 
 const IS_SERVERLESS =
   process.env.VERCEL === "1" || process.env.IS_SERVERLESS === "true";
