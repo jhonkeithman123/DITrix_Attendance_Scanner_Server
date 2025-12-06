@@ -38,20 +38,19 @@ export async function createSharedCapture(
 
 export async function findSharedCapturesByUser(userId: number) {
   try {
-    // Get captures owned by user
-    const owned = await db.query(
-      `SELECT sc.id, sc.owner_id, sc.share_code, sc.subject, sc.date, 
-              sc.start_time, sc.end_time, sc.created_at, sc.updated_at, 'owner' as access_type
+    const [ownedRows] = await db.query(
+      `SELECT sc.id, sc.owner_id, sc.share_code, sc.subject, sc.date,
+              sc.start_time, sc.end_time, sc.created_at, sc.updated_at, 'owner' AS access_type
        FROM shared_captures sc
        WHERE sc.owner_id = ?
        ORDER BY sc.created_at DESC`,
       [userId]
     );
 
-    // Get captures shared with user
-    const shared = await db.query(
+    const [sharedRows] = await db.query(
       `SELECT sc.id, sc.owner_id, sc.share_code, sc.subject, sc.date,
-              sc.start_time, sc.end_time, sc.created_at, sc.updated_at, cc.role as access_type, u.name as owner_name
+              sc.start_time, sc.end_time, sc.created_at, sc.updated_at,
+              cc.role AS access_type, u.name AS owner_name
        FROM shared_captures sc
        JOIN capture_collaborators cc ON sc.id = cc.capture_id
        LEFT JOIN users u ON sc.owner_id = u.id
@@ -71,39 +70,35 @@ export async function findSharedCapturesByUser(userId: number) {
       created_at: string;
       updated_at: string;
       access_type: string;
-      owner_name?: string;
+      owner_name?: string | null;
     }
 
     return {
-      owned: ((owned || []) as SharedCaptureRow[]).map(
-        (row: SharedCaptureRow) => ({
-          id: row.id,
-          owner_id: row.owner_id,
-          share_code: row.share_code,
-          subject: row.subject,
-          date: row.date,
-          start_time: row.start_time,
-          end_time: row.end_time,
-          created_at: row.created_at,
-          updated_at: row.updated_at,
-          access_type: row.access_type,
-        })
-      ),
-      shared: ((shared || []) as SharedCaptureRow[]).map(
-        (row: SharedCaptureRow) => ({
-          id: row.id,
-          owner_id: row.owner_id,
-          share_code: row.share_code,
-          subject: row.subject,
-          date: row.date,
-          start_time: row.start_time,
-          end_time: row.end_time,
-          created_at: row.created_at,
-          updated_at: row.updated_at,
-          access_type: row.access_type,
-          owner_name: row.owner_name,
-        })
-      ),
+      owned: (ownedRows as SharedCaptureRow[]).map((row) => ({
+        id: row.id,
+        owner_id: row.owner_id,
+        share_code: row.share_code,
+        subject: row.subject,
+        date: row.date,
+        start_time: row.start_time,
+        end_time: row.end_time,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        access_type: row.access_type,
+      })),
+      shared: (sharedRows as SharedCaptureRow[]).map((row) => ({
+        id: row.id,
+        owner_id: row.owner_id,
+        share_code: row.share_code,
+        subject: row.subject,
+        date: row.date,
+        start_time: row.start_time,
+        end_time: row.end_time,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        access_type: row.access_type,
+        owner_name: row.owner_name,
+      })),
     };
   } catch (e) {
     console.error("[sharedCaptureStore] findSharedCapturesByUser error:", e);

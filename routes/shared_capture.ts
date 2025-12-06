@@ -40,18 +40,10 @@ router
     try {
       const owned = await findSharedCapturesByUser(userId);
 
-      // Flatten the nested arrays and filter out buffer objects
-      const ownedCaptures = (owned.owned || []).filter(
-        (c: any) => c && typeof c === "object" && !c._buf
-      );
-      const sharedCaptures = (owned.shared || []).filter(
-        (c: any) => c && typeof c === "object" && !c._buf
-      );
-
       return res.json({
         status: "ok",
-        owned: ownedCaptures,
-        shared: sharedCaptures,
+        owned: owned.owned,
+        shared: owned.shared,
       });
     } catch (e) {
       console.error("[shared-captures] list error:", e);
