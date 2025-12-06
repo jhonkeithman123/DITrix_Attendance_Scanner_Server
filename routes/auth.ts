@@ -125,6 +125,31 @@ router.get("/session", async (req: Request, res: Response) => {
   }
 });
 
+router.post("/logout", async (req: Request, res: Response) => {
+  if (!DBAvailable(req, res)) return;
+
+  try {
+    const token = req.headers.authorization?.split(" ")[1];
+    console.log("Token on the request object: ", token);
+    if (!token) {
+      return res.status(400).json({ error: "No token provided" });
+    }
+
+    // Delete the session so token becomes invalid
+    const result = await findSessionByToken(token);
+    if (!result) {
+      return res.status(404).json({ error: "Session not found." });
+    }
+
+    await deleteSession(token);
+
+    res.json({ message: "Logged out successfully" });
+  } catch (e) {
+    console.error("[Logout] error:", e);
+    res.status(500).json({ error: "Logout failed." });
+  }
+});
+
 // POST /auth/refresh
 // Verifies token (via middleware) and extends session expiry in DB.
 // Returns { expiresAt: ISOString } on success.
