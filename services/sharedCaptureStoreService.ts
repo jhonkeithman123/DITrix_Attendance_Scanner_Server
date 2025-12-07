@@ -1,5 +1,6 @@
 import db from "../config/db.js";
 import { v4 as uuidv4 } from "uuid";
+import { RowDataPacket } from "mysql2/promise";
 
 function generateShareCode(): string {
   return Math.random().toString(36).substring(2, 10).toUpperCase();
@@ -38,16 +39,18 @@ export async function createSharedCapture(
 
 export async function findSharedCapturesByUser(userId: number) {
   try {
-    const [ownedRows] = await db.query(
+    const ownedResult = await db.query(
       `SELECT sc.id, sc.owner_id, sc.share_code, sc.subject, sc.date,
-              sc.start_time, sc.end_time, sc.created_at, sc.updated_at, 'owner' AS access_type
+              sc.start_time, sc.end_time, sc.created_at, sc.updated_at,
+              'owner' AS access_type
        FROM shared_captures sc
        WHERE sc.owner_id = ?
        ORDER BY sc.created_at DESC`,
       [userId]
     );
+    const ownedRows = Array.isArray(ownedResult) ? ownedResult[0] : ownedResult;
 
-    const [sharedRows] = await db.query(
+    const sharedResult = await db.query(
       `SELECT sc.id, sc.owner_id, sc.share_code, sc.subject, sc.date,
               sc.start_time, sc.end_time, sc.created_at, sc.updated_at,
               cc.role AS access_type, u.name AS owner_name
@@ -58,46 +61,35 @@ export async function findSharedCapturesByUser(userId: number) {
        ORDER BY sc.created_at DESC`,
       [userId]
     );
-
-    interface SharedCaptureRow {
-      id: string;
-      owner_id: number;
-      share_code: string;
-      subject: string | null;
-      date: string | null;
-      start_time: string | null;
-      end_time: string | null;
-      created_at: string;
-      updated_at: string;
-      access_type: string;
-      owner_name?: string | null;
-    }
+    const sharedRows = Array.isArray(sharedResult)
+      ? sharedResult[0]
+      : sharedResult;
 
     return {
-      owned: (ownedRows as SharedCaptureRow[]).map((row) => ({
-        id: row.id,
-        owner_id: row.owner_id,
-        share_code: row.share_code,
-        subject: row.subject,
-        date: row.date,
-        start_time: row.start_time,
-        end_time: row.end_time,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-        access_type: row.access_type,
+      owned: (ownedRows as any[]).map((row: any) => ({
+        id: row.id as string,
+        owner_id: row.owner_id as number,
+        share_code: row.share_code as string,
+        subject: (row.subject as string) ?? null,
+        date: (row.date as string) ?? null,
+        start_time: (row.start_time as string) ?? null,
+        end_time: (row.end_time as string) ?? null,
+        created_at: row.created_at as string,
+        updated_at: row.updated_at as string,
+        access_type: row.access_type as string,
       })),
-      shared: (sharedRows as SharedCaptureRow[]).map((row) => ({
-        id: row.id,
-        owner_id: row.owner_id,
-        share_code: row.share_code,
-        subject: row.subject,
-        date: row.date,
-        start_time: row.start_time,
-        end_time: row.end_time,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-        access_type: row.access_type,
-        owner_name: row.owner_name,
+      shared: (sharedRows as any[]).map((row: any) => ({
+        id: row.id as string,
+        owner_id: row.owner_id as number,
+        share_code: row.share_code as string,
+        subject: (row.subject as string) ?? null,
+        date: (row.date as string) ?? null,
+        start_time: (row.start_time as string) ?? null,
+        end_time: (row.end_time as string) ?? null,
+        created_at: row.created_at as string,
+        updated_at: row.updated_at as string,
+        access_type: row.access_type as string,
+        owner_name: (row.owner_name as string) ?? null,
       })),
     };
   } catch (e) {
@@ -107,30 +99,33 @@ export async function findSharedCapturesByUser(userId: number) {
 }
 
 export async function findSharedCaptureById(captureId: string) {
-  const rows = await db.query(
+  const result = await db.query(
     `SELECT * FROM shared_captures WHERE id = ? LIMIT 1`,
     [captureId]
   );
-  return rows && rows.length > 0 ? rows[0] : null;
+  const rows = Array.isArray(result) ? result[0] : result;
+  return (rows as any[]).length ? (rows as any[])[0] : null;
 }
 
 export async function findSharedCaptureByCode(shareCode: string) {
-  const rows = await db.query(
+  const result = await db.query(
     `SELECT * FROM shared_captures WHERE share_code = ? LIMIT 1`,
     [shareCode]
   );
-  return rows && rows.length > 0 ? rows[0] : null;
+  const rows = Array.isArray(result) ? result[0] : result;
+  return (rows as any[]).length ? (rows as any[])[0] : null;
 }
 
 /// Check if a local capture has already been uploaded (by id)
 export async function captureAlreadyUploaded(
   captureId: string
 ): Promise<boolean> {
-  const rows = await db.query(
+  const result = await db.query(
     `SELECT 1 FROM shared_captures WHERE id = ? LIMIT 1`,
     [captureId]
   );
-  return rows && rows.length > 0;
+  const rows = Array.isArray(result) ? result[0] : result;
+  return (rows as any[]).length > 0;
 }
 
 export async function addCollaborator(
@@ -155,22 +150,24 @@ export async function removeCollaborator(captureId: string, userId: number) {
 }
 
 export async function getCollaborators(captureId: string) {
-  const rows = await db.query(
+  const result = await db.query(
     `SELECT u.id, u.name, u.email, cc.role, cc.joined_at
-         FROM capture_collaborators cc
-         JOIN users u ON cc.user_id = u.id
-         WHERE cc.capture_id = ?`,
+     FROM capture_collaborators cc
+     JOIN users u ON cc.user_id = u.id
+     WHERE cc.capture_id = ?`,
     [captureId]
   );
-  return rows || [];
+  const rows = Array.isArray(result) ? result[0] : result;
+  return (rows as any[]) || [];
 }
 
 /// Get all students (users) in the system for invitation
 export async function getAllStudents() {
-  const rows = await db.query(
+  const result = await db.query(
     `SELECT id, name, email FROM users ORDER BY name ASC`
   );
-  return rows || [];
+  const rows = Array.isArray(result) ? result[0] : result;
+  return (rows as any[]) || [];
 }
 
 export async function upsertRoster(
@@ -189,7 +186,6 @@ export async function upsertRoster(
 
   if (roster.length === 0) return 0;
 
-  // Insert new roster
   const values = roster.map((r) => [
     captureId,
     r.id,
@@ -212,14 +208,15 @@ export async function upsertRoster(
 }
 
 export async function getRoster(captureId: string) {
-  const rows = await db.query(
+  const result = await db.query(
     `SELECT student_id as id, student_name as name, present, time_marked as time, status
      FROM capture_roster
      WHERE capture_id = ?
      ORDER BY student_name`,
     [captureId]
   );
-  return rows || [];
+  const rows = Array.isArray(result) ? result[0] : result;
+  return (rows as any[]) || [];
 }
 
 export async function updateSharedCapture(
@@ -271,21 +268,25 @@ export async function hasAccess(
   captureId: string
 ): Promise<{ hasAccess: boolean; role: string | null }> {
   // Check if owner
-  const ownerCheck = await db.query(
+  const ownerResult = await db.query(
     `SELECT 1 FROM shared_captures WHERE id = ? AND owner_id = ?`,
     [captureId, userId]
   );
-  if (ownerCheck && ownerCheck.length > 0) {
+  const ownerRows = Array.isArray(ownerResult) ? ownerResult[0] : ownerResult;
+  if ((ownerRows as any[]).length > 0) {
     return { hasAccess: true, role: "owner" };
   }
 
   // Check if collaborator
-  const collabCheck = await db.query(
+  const collabResult = await db.query(
     `SELECT role FROM capture_collaborators WHERE capture_id = ? AND user_id = ?`,
     [captureId, userId]
   );
-  if (collabCheck && collabCheck.length > 0) {
-    return { hasAccess: true, role: collabCheck[0].role };
+  const collabRows = Array.isArray(collabResult)
+    ? collabResult[0]
+    : collabResult;
+  if ((collabRows as any[]).length > 0) {
+    return { hasAccess: true, role: (collabRows as any[])[0].role };
   }
 
   return { hasAccess: false, role: null };
