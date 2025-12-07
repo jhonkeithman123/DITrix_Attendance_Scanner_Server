@@ -15,7 +15,6 @@ import dbCheck from "./middleware/db_check.js";
 dotenv.config();
 const app: Express = express();
 app.use(cors());
-app.use(express.json());
 
 // --- Add request logging to help debug raw-body / body-parser issues ---
 app.use((req: Request, _res: Response, next: NextFunction) => {
@@ -35,20 +34,25 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
 app.use(dbCheck);
 
 app.use((req: Request, res: Response, next: NextFunction) => {
-  const ct = (req.headers["content-type"] || "").toString();
-  // If multipart form (file upload), skip json/body parsing so multer can consume the stream
+  const ct = (req.headers["content-type"] || "").toString().toLowerCase();
   if (ct.startsWith("multipart/form-data")) {
+    // Let multer handle the stream
+    console.log("[PARSER] Skipping json parser for multipart request");
     return next();
   }
-  // For all other request types, parse JSON with higher limits
-  express.json({ limit: "20mb" })(req, res, (err) => {
-    if (err) return next(err);
+  // parse JSON for other requests with higher limit and log parse starts/errors
+  console.log("[PARSER] Applying express.json() for", req.originalUrl);
+  express.json({ limit: "50mb" })(req, res, (err) => {
+    if (err) {
+      console.error("[PARSER] express.json error:", err && err.message);
+      return next(err);
+    }
     next();
   });
 });
 
 // Keep url encoded for forms (also with larger limit)
-app.use(express.urlencoded({ limit: "20mb", extended: true }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Serve upload avatars
 app.use(
@@ -86,12 +90,10 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
     (err.message?.includes("raw-body") ||
       err.message?.includes("Unexpected end of"))
   ) {
-    return res
-      .status(400)
-      .json({
-        error: "Invalid request payload (raw-body)",
-        detail: err.message,
-      });
+    return res.status(400).json({
+      error: "Invalid request payload (raw-body)",
+      detail: err.message,
+    });
   }
 
   // fallback
