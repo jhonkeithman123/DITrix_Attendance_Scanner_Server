@@ -99,7 +99,9 @@ async function queryWithTimeout<T = RowDataPacket[]>(
           code: "DB_NOT_AVAILABLE",
         });
 
-      const p = poolRef.execute(sql, params);
+      // Use query() instead of execute() because some statements (e.g. START TRANSACTION)
+      // are not supported by the prepared-statement protocol. query() sends raw SQL.
+      const p = poolRef.query(sql, params);
       const timeout = new Promise((_, rej) =>
         setTimeout(
           () => rej(new Error(`DB query timed out after ${timeoutMs}ms`)),
