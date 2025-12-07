@@ -1,7 +1,8 @@
 // ...existing code...
-import express, { Express } from "express";
+import express, { Express, Request, Response, NextFunction } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import path from "path";
 
 import restrictBrowseRoute from "./routes/browser_restrict.js";
 import routerAuth from "./routes/auth.js";
@@ -18,6 +19,28 @@ app.use(express.json());
 
 // per-request DB availability check
 app.use(dbCheck);
+
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const ct = (req.headers["content-type"] || "").toString();
+  // If multipart form (file upload), skip json/body parsing so multer can consume the stream
+  if (ct.startsWith("multipart/form-data")) {
+    return next();
+  }
+  // For all other request types, parse JSON with higher limits
+  express.json({ limit: "20mb" })(req, res, (err) => {
+    if (err) return next(err);
+    next();
+  });
+});
+
+// Keep url encoded for forms (also with larger limit)
+app.use(express.urlencoded({ limit: "20mb", extended: true }));
+
+// Serve upload avatars
+app.use(
+  "/upload/avatars",
+  express.static(path.join(process.cwd(), "public", "uploads", "avatars"))
+);
 
 app.use("/", restrictBrowseRoute);
 app.use("/auth", routerAuth);

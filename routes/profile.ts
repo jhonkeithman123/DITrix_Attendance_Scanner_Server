@@ -31,7 +31,7 @@ const storage = multer.diskStorage({
     cb(null, name);
   },
 });
-const uplaod = multer({ storage });
+const upload = multer({ storage });
 
 router
   .route("/")
@@ -54,7 +54,7 @@ router
     }
   })
   // PUT /profile -> update name/avatar (body: { name, avatarBase64 })
-  .put(uplaod.single("avatar"), async (req: AuthRequest, res: Response) => {
+  .put(upload.single("avatar"), async (req: AuthRequest, res: Response) => {
     if (!DBAvailable(req, res)) return;
 
     try {
