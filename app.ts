@@ -38,7 +38,7 @@ app.use(express.urlencoded({ limit: "20mb", extended: true }));
 
 // Serve upload avatars
 app.use(
-  "/upload/avatars",
+  "/uploads/avatars",
   express.static(path.join(process.cwd(), "public", "uploads", "avatars"))
 );
 
