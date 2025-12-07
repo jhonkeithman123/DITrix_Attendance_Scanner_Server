@@ -62,6 +62,23 @@ router
     console.table(req.body);
 
     try {
+      // Prevent duplicate subject names for the same owner (case insentitive)
+      if (subject && typeof subject === "string") {
+        const ownedRes = await findSharedCapturesByUser(userId);
+        const ownedList = ownedRes?.owned ?? [];
+        const normalized = subject.trim().toLowerCase();
+        if (
+          ownedList.some(
+            (c: any) =>
+              ((c.subject || "") as string).trim().toLowerCase() === normalized
+          )
+        ) {
+          return res.status(409).json({
+            error: "Duplicate subject",
+            message: "You already have shared capture with this subject",
+          });
+        }
+      }
       // Check if this capture ID already exists
       const alreadyUploaded = await captureAlreadyUploaded(id);
       if (alreadyUploaded) {
