@@ -17,6 +17,20 @@ const app: Express = express();
 app.use(cors());
 app.use(express.json());
 
+// --- Add request logging to help debug raw-body / body-parser issues ---
+app.use((req: Request, _res: Response, next: NextFunction) => {
+  try {
+    const ct = (req.headers["content-type"] || "").toString();
+    const cl = (req.headers["content-length"] || "").toString();
+    console.log(
+      `[REQ] ${req.method} ${req.originalUrl} content-type=${ct} content-length=${cl}`
+    );
+  } catch (e) {
+    console.log("[REQ] logger error", e);
+  }
+  next();
+});
+
 // per-request DB availability check
 app.use(dbCheck);
 
@@ -41,6 +55,50 @@ app.use(
   "/uploads/avatars",
   express.static(path.join(process.cwd(), "public", "uploads", "avatars"))
 );
+
+// --- Error handler that logs body-parser / raw-body errors for diagnosis ---
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  // Log full error and some request meta for debugging
+  try {
+    console.error("[ERROR] uncaught middleware error:", {
+      message: err?.message,
+      type: err?.type,
+      stack: err?.stack,
+      url: req.originalUrl,
+      method: req.method,
+      contentType: req.headers["content-type"],
+      contentLength: req.headers["content-length"],
+    });
+  } catch (logErr) {
+    console.error("[ERROR] logging failed", logErr);
+  }
+
+  // Handle common body-parser/raw-body errors
+  if (
+    err &&
+    (err.type === "entity.too.large" ||
+      /entity.*too.*large/i.test(err.message || ""))
+  ) {
+    return res.status(413).json({ error: "Payload too large" });
+  }
+  if (
+    err &&
+    (err.message?.includes("raw-body") ||
+      err.message?.includes("Unexpected end of"))
+  ) {
+    return res
+      .status(400)
+      .json({
+        error: "Invalid request payload (raw-body)",
+        detail: err.message,
+      });
+  }
+
+  // fallback
+  return res
+    .status(err?.status || 500)
+    .json({ error: err?.message ?? "Server error" });
+});
 
 app.use("/", restrictBrowseRoute);
 app.use("/auth", routerAuth);

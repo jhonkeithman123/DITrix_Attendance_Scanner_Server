@@ -13,6 +13,18 @@ type AuthRequest = Request & {
   user?: { id: string };
 };
 
+// Log incoming profile route requests (helps see headers before body parsing)
+router.use((req, _res, next) => {
+  try {
+    console.log(
+      `[PROFILE ROUTE] ${req.method} ${req.originalUrl} content-type=${req.headers["content-type"]} content-length=${req.headers["content-length"]}`
+    );
+  } catch (e) {
+    console.log("[PROFILE ROUTE] logger error", e);
+  }
+  next();
+});
+
 // ensure upload directory exists
 const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads", "avatars");
 try {
