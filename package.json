@@ -36,10 +36,12 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@types/multer": "^2.0.0",
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.2.3",
     "jsonwebtoken": "^9.0.2",
     "math-intrinsics": "^1.1.0",
+    "multer": "^2.0.2",
     "mysql2": "^3.15.3",
     "nodemailer": "^7.0.11",
     "uuid": "^13.0.0"
