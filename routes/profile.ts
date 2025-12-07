@@ -69,6 +69,14 @@ router
   .put(upload.single("avatar"), async (req: AuthRequest, res: Response) => {
     if (!DBAvailable(req, res)) return;
 
+    // Log multer result and body for debugging (do NOT log large base64 bodies in production)
+    console.log(
+      "[PROFILE PUT] after multer: file=",
+      req.file ? req.file.filename : null,
+      " bodyKeys=",
+      Object.keys(req.body || {}).slice(0, 10)
+    );
+
     try {
       const userId = req.user?.id;
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
