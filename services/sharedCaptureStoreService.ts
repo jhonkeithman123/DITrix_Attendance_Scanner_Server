@@ -216,7 +216,15 @@ export async function getRoster(captureId: string) {
     [captureId]
   );
   const rows = Array.isArray(result) ? result[0] : result;
-  return (rows as any[]) || [];
+  return (
+    (rows as any[]).map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      present: row.present === 1 || row.present === true, // Convert to bool
+      time: row.time || null,
+      status: row.status || "Absent",
+    })) || []
+  );
 }
 
 export async function updateSharedCapture(
