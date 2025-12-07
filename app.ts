@@ -7,7 +7,6 @@ import path from "path";
 import restrictBrowseRoute from "./routes/browser_restrict.js";
 import routerAuth from "./routes/auth.js";
 import routerProfile from "./routes/profile.js";
-import routerSync from "./routes/sync.js";
 import health from "./routes/health.js";
 import routerSharedCaptures from "./routes/shared_capture.js";
 import dbCheck from "./middleware/db_check.js";
@@ -104,7 +103,6 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 
 app.use("/", restrictBrowseRoute);
 app.use("/auth", routerAuth);
-app.use("/sync", routerSync);
 app.use("/profile", routerProfile);
 app.use("/health", health);
 app.use("/shared-captures", routerSharedCaptures);
