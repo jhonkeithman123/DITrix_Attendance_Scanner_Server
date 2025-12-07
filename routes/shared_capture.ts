@@ -171,6 +171,54 @@ router
       console.error("[shared-captures] update error:", e);
       return res.status(500).json({ error: "Failed to update capture" });
     }
+  })
+  .put(async (req: AuthRequest, res: Response) => {
+    if (!DBAvailable(req, res)) return;
+    const userId = parseInt(req.user?.id || "0", 10);
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const { id } = req.params;
+    const body = req.body || {};
+    try {
+      const access = await hasAccess(userId, id);
+      if (!access?.hasAccess)
+        return res.status(403).json({ error: "Forbidden" });
+
+      // If client attempts to change subject/start_time/end_time, ensure role is owner or editor.
+      const tryingToChangeMetadata =
+        Object.prototype.hasOwnProperty.call(body, "subject") ||
+        Object.prototype.hasOwnProperty.call(body, "start_time") ||
+        Object.prototype.hasOwnProperty.call(body, "end_time") ||
+        Object.prototype.hasOwnProperty.call(body, "date");
+
+      if (
+        tryingToChangeMetadata &&
+        access.role !== "owner" &&
+        access.role !== "editor"
+      ) {
+        return res
+          .status(403)
+          .json({ error: "Only owner or co-owner may change subject/time" });
+      }
+
+      // update metadata (updateSharedCapture doesn't accept roster)
+      const updated = await updateSharedCapture(id, {
+        subject: body.subject,
+        date: body.date,
+        start_time: body.start_time,
+        end_time: body.end_time,
+      });
+
+      // update roster separately if provided
+      if (body.roster && Array.isArray(body.roster)) {
+        await upsertRoster(id, body.roster);
+      }
+
+      return res.json({ status: "ok", capture: updated });
+    } catch (e) {
+      console.error("[shared-captures] update error:", e);
+      return res.status(500).json({ error: "Failed to update capture" });
+    }
   }) // DELETE /shared-captures/:id - Delete capture
   .delete(async (req: AuthRequest, res: Response) => {
     if (!DBAvailable(req, res)) return;
@@ -245,10 +293,14 @@ router.post("/:id/collaborators", async (req: AuthRequest, res: Response) => {
 
   try {
     const access = await hasAccess(userId, id);
-    if (!access.hasAccess || access.role !== "owner") {
-      return res
-        .status(403)
-        .json({ error: "Only owner can add collaborators" });
+    // allow owner OR editor (co-owner) to invite collaborators
+    if (
+      !access.hasAccess ||
+      (access.role !== "owner" && access.role !== "editor")
+    ) {
+      return res.status(403).json({
+        error: "Only owner or co-owner (editor) can add collaborators",
+      });
     }
 
     const user = await findByEmail(email);
