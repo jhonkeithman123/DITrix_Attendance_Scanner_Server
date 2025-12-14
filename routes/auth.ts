@@ -26,9 +26,9 @@ import {
   toMySqlDatetimeUTC,
   generateToken,
 } from "../utils/sessionUtils.js";
-import { DBAvailable } from "../middleware/db_check.js";
 import authMiddleware from "../middleware/authMiddleware.js";
-import db from "../config/db.js";
+import { isDbAvailable } from "../config/firestore.js";
+import { setVerifiedByEmail } from "../services/userStore.js";
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 
@@ -37,11 +37,11 @@ const router = express.Router();
 
 //* Temporary route to debug session
 router.get("/debug/session-by-token", async (req: Request, res: Response) => {
-  if (!DBAvailable(req, res)) return;
+  if (!isDbAvailable()) return;
 });
 
 router.get("/session", async (req: Request, res: Response) => {
-  if (!DBAvailable(req, res)) return;
+  if (!isDbAvailable()) return;
 
   try {
     const auth = (req.headers.authorization || "").toString();
@@ -126,7 +126,7 @@ router.get("/session", async (req: Request, res: Response) => {
 });
 
 router.post("/logout", async (req: Request, res: Response) => {
-  if (!DBAvailable(req, res)) return;
+  if (!isDbAvailable()) return;
 
   try {
     const token = req.headers.authorization?.split(" ")[1];
@@ -155,7 +155,7 @@ router.post("/logout", async (req: Request, res: Response) => {
 // Verifies token (via middleware) and extends session expiry in DB.
 // Returns { expiresAt: ISOString } on success.
 router.post("/refresh", authMiddleware, async (req: Request, res: Response) => {
-  if (!DBAvailable(req, res)) return;
+  if (!isDbAvailable()) return;
 
   try {
     const token =
@@ -177,7 +177,7 @@ router.post("/refresh", authMiddleware, async (req: Request, res: Response) => {
 });
 
 router.post("/login", async (req: Request, res: Response) => {
-  if (!req.dbAvailable && !db.isDbAvailable()) {
+  if (!isDbAvailable()) {
     return res.status(503).json({ error: "Database unavailable" });
   }
 
@@ -232,7 +232,7 @@ router.post("/login", async (req: Request, res: Response) => {
 });
 
 router.post("/signup", async (req: Request, res: Response) => {
-  if (!DBAvailable(req, res)) return;
+  if (!isDbAvailable()) return;
 
   const { email, password, name } = req.body || {};
   if (!email || !password) {
@@ -301,7 +301,7 @@ router.post("/signup", async (req: Request, res: Response) => {
 });
 
 router.post("/resend", async (req: Request, res: Response) => {
-  if (!DBAvailable(req, res)) return;
+  if (!isDbAvailable()) return;
 
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: "Email required" });
@@ -349,7 +349,7 @@ router.post("/resend", async (req: Request, res: Response) => {
 });
 
 router.post("/verify", async (req: Request, res: Response) => {
-  if (!DBAvailable(req, res)) return;
+  if (!isDbAvailable()) return;
 
   const { email, code } = req.body || {};
   if (!email || !code)
@@ -371,7 +371,9 @@ router.post("/verify", async (req: Request, res: Response) => {
     }
 
     try {
-      await db.query(`UPDATE users SET verified = 1 WHERE email = ?`, [email]);
+      const ok = await setVerifiedByEmail(email);
+      if (!ok)
+        return res.status(500).json({ error: "Failed to verify account" });
     } catch (e) {
       console.error("Failed to update user verified flag:", e);
       return res.status(500).json({ error: "Failed to verified account" });
@@ -386,7 +388,7 @@ router.post("/verify", async (req: Request, res: Response) => {
 });
 
 router.post("/forgot", async (req: Request, res: Response) => {
-  if (!DBAvailable(req, res)) return;
+  if (!isDbAvailable()) return;
 
   const { email } = req.body;
   if (!email) {
@@ -441,7 +443,7 @@ router.post("/forgot", async (req: Request, res: Response) => {
 });
 
 router.patch("/reset", async (req: Request, res: Response) => {
-  if (!DBAvailable(req, res)) return;
+  if (!isDbAvailable()) return;
 
   const { email, code, newPassword } = req.body || {};
   console.table(req.body);

@@ -1,145 +1,62 @@
 import bcrypt from "bcryptjs";
-import db from "../config/db.js";
-import { parseDbDateUtc, toMySqlDatetimeUTC } from "../utils/sessionUtils.js";
+import { v4 as uuidv4 } from "uuid";
+import db, { admin } from "../config/firestore.js";
 
-type RawUserRow = {
-  id: string | number;
-  email: string;
-  name?: string | null;
-  avatar_url?: string | null;
-  created_at?: string | null;
-  password_hash?: string | null;
-  verified?: number | boolean | null;
-};
-
-export type PublicProfile = {
-  id: string | number;
+type PublicProfile = {
+  id: string;
   email: string;
   name: string;
   avatar_url: string;
   created_at: string | null;
 };
 
-/**
- * Normalize db.query result which may be either:
- * - [rows, fields] (mysql2/promise)
- * - rows (some wrappers)
- */
-function rowsFromDb(res: any): any[] {
-  if (Array.isArray(res)) {
-    // mysql2/promise returns [rows, fields]
-    if (res.length > 0 && Array.isArray(res[0])) return res[0];
-    // sometimes query returns rows directly
-    return res;
-  }
-  return [];
-}
-
-export function isDbDateExpired(raw?: string | null): boolean {
-  const d = parseDbDateUtc(raw);
-  if (!d) return true; // treat missing/invalid as expired
-  return d.getTime() <= Date.now();
-}
-
-export function dbDateToIso(raw?: string | null): string | null {
-  const d = parseDbDateUtc(raw);
-  return d ? d.toISOString() : null;
-}
-
-/**
- * MySQL-compatible promise helpers (wrap db.query)
- * db.query(...) returns [rows, fields] via mysql2/promise pool
- */
-export const run = async (
-  sql: string,
-  params: any[] = []
-): Promise<boolean> => {
-  await db.query(sql, params);
-  return true;
-};
-
-export const get = async <T = any>(
-  sql: string,
-  params: any[] = []
-): Promise<T | null> => {
-  const [rows] = await db.query(sql, params);
-  return rows && rows.length ? rows[0] : null;
-};
-
-export const all = async <T = any>(
-  sql: string,
-  params: any[] = []
-): Promise<T[]> => {
-  const [rows] = await db.query(sql, params);
-  return rows || [];
-};
-
-function mapRowToUser(row: RawUserRow | null): PublicProfile | null {
-  if (!row) return null;
+function toPublic(id: string, data: any): PublicProfile {
   return {
-    id: String(row.id),
-    email: row.email,
-    name: row.name ?? "",
-    avatar_url: row.avatar_url ?? "",
-    created_at: row.created_at ?? null,
+    id,
+    email: data.email,
+    name: data.name ?? "",
+    avatar_url: data.avatar_url ?? "",
+    created_at: data.created_at ? data.created_at.toDate().toISOString() : null,
   };
 }
 
-export async function findByEmail(
-  email: string
-): Promise<(PublicProfile & { passwordHash?: string | null }) | null> {
-  const row = await get<RawUserRow>(
-    `SELECT id, email, name, avatar_url, password_hash, created_at
-     FROM users WHERE email = ? LIMIT 1`,
-    [email]
-  );
-  if (!row) return null;
+export async function findByEmail(email: string) {
+  const q = await db
+    .collection("users")
+    .where("email", "==", email)
+    .limit(1)
+    .get();
+  if (q.empty) return null;
   return {
-    ...mapRowToUser(row)!,
-    passwordHash: row.password_hash ?? null,
+    ...toPublic(q.docs[0].id, q.docs[0].data()),
+    passwordHash: q.docs[0].data().password_hash ?? null,
   };
 }
 
-/**
- * NOTE: param must be trusted/validated by caller to avoid SQL injection.
- */
-export async function findOneBy(
-  param: string,
-  value: any
-): Promise<(PublicProfile & { passwordHash?: string | null }) | null> {
-  const row = await get<RawUserRow>(
-    `SELECT * FROM users WHERE ${param} = ? LIMIT 1`,
-    [value]
-  );
-  if (!row) return null;
+export async function findOneBy(param: string, value: any) {
+  const q = await db
+    .collection("users")
+    .where(param, "==", value)
+    .limit(1)
+    .get();
+  if (q.empty) return null;
   return {
-    ...mapRowToUser(row)!,
-    passwordHash: row.password_hash ?? null,
+    ...toPublic(q.docs[0].id, q.docs[0].data()),
+    passwordHash: q.docs[0].data().password_hash ?? null,
   };
 }
 
-/**
- * Find user by id (returns public profile or null)
- */
-export async function findById(id: string | number): Promise<{
-  id: string | number;
-  email: string;
-  name?: string | null;
-  avatar_url?: string | null;
-  verified: boolean;
-} | null> {
+export async function findById(id: string | number) {
   if (!id) return null;
-  const row = await get<RawUserRow>(
-    `SELECT id, email, name, avatar_url, verified FROM users WHERE id = ? LIMIT 1`,
-    [id]
-  );
-  if (!row) return null;
+  const doc = await db.collection("users").doc(String(id)).get();
+  if (!doc.exists) return null;
+  const d = doc.data()!;
   return {
-    id: String(row.id),
-    email: row.email,
-    name: row.name ?? "",
-    avatar_url: row.avatar_url ?? "",
-    verified: !!row.verified,
+    id: doc.id,
+    email: d.email,
+    name: d.name ?? "",
+    avatar_url: d.avatar_url ?? "",
+    verified: !!d.verified,
   };
 }
 
@@ -151,145 +68,92 @@ export async function createUser({
   email: string;
   password: string;
   name?: string;
-}): Promise<PublicProfile> {
+}) {
   const existing = await findByEmail(email);
   if (existing) throw new Error("UserExists");
-
   const passwordHash = await bcrypt.hash(password, 10);
-  const now = toMySqlDatetimeUTC(new Date());
-
-  const sql = `INSERT INTO users (email, password_hash, name, avatar_url, created_at)
-      VALUES (?, ?, ?, ?, ?)`;
-  // mysql2 returns [result, fields] when using pool.query; some wrappers return result directly.
-  const qres: any = await db.query(sql, [email, passwordHash, name, "", now]);
-  // normalize result: if [result, fields] -> take first element
-  const result =
-    Array.isArray(qres) &&
-    qres.length > 0 &&
-    qres[0] &&
-    typeof qres[0] === "object"
-      ? qres[0]
-      : qres;
-
-  console.table(result);
-
-  // prefer insertId (mysql2). fallback to common alternatives if present.
-  let rawInsertId =
-    result && (result.insertId ?? result.insertid ?? result.id ?? null);
-
-  // Defensive: if insertId is missing or suspicious (2147483647 or 0) try to query the row by email.
-  const suspiciousIds = new Set([null, undefined, 0, 2147483647]);
-  if (
-    suspiciousIds.has(rawInsertId) ||
-    (typeof rawInsertId === "number" && rawInsertId < 0)
-  ) {
-    console.warn(
-      "createUser: suspicious insertId:",
-      rawInsertId,
-      "— falling back to SELECT by email"
-    );
-    const row = await get<RawUserRow>(
-      `SELECT id FROM users WHERE email = ? ORDER BY created_at DESC LIMIT 1`,
-      [email]
-    );
-    rawInsertId = row ? row.id : rawInsertId;
-  }
-
-  const insertId = rawInsertId != null ? String(rawInsertId) : "";
-
-  return {
-    id: insertId ?? "",
+  const now = admin.firestore.Timestamp.now();
+  const docRef = db.collection("users").doc(); // auto id
+  await docRef.set({
     email,
+    password_hash: passwordHash,
     name,
     avatar_url: "",
     created_at: now,
+    verified: false,
+  });
+  return {
+    id: docRef.id,
+    email,
+    name,
+    avatar_url: "",
+    created_at: now.toDate().toISOString(),
   };
 }
 
-/**
- * Verify credentials - returns PublicProfile on success or null.
- */
-export async function verifyPassword(
-  email: string,
-  password: string
-): Promise<PublicProfile | null> {
-  const row = await get<RawUserRow>(
-    `SELECT id, email, name, avatar_url, password_hash, created_at
-        FROM users WHERE email = ? LIMIT 1`,
-    [email]
-  );
-
-  if (!row) return null;
-  const ok = await bcrypt.compare(password, row.password_hash ?? "");
-
+export async function verifyPassword(email: string, password: string) {
+  const user = await findByEmail(email);
+  if (!user) return null;
+  const ok = await bcrypt.compare(password, user.passwordHash ?? "");
   if (!ok) return null;
-
-  return mapRowToUser(row);
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    avatar_url: user.avatar_url,
+    created_at: user.created_at,
+  };
 }
 
-/**
- * Update user's password (hashes) by email.
- */
 export async function updatePasswordByEmail(
   email: string,
   newPassword: string
-): Promise<boolean> {
-  if (!email) throw new Error("email is required.");
-  if (
-    !newPassword ||
-    typeof newPassword !== "string" ||
-    newPassword.length < 8
-  ) {
+) {
+  if (!newPassword || newPassword.length < 8)
     throw new Error("invalid_password");
-  }
-
-  const existing = await findByEmail(email);
-  if (!existing) throw new Error("UserNotFound");
-
+  const q = await db
+    .collection("users")
+    .where("email", "==", email)
+    .limit(1)
+    .get();
+  if (q.empty) throw new Error("UserNotFound");
+  const docRef = q.docs[0].ref;
   const passwordHash = await bcrypt.hash(newPassword, 10);
-  await run(`UPDATE users SET password_hash = ? WHERE email = ?`, [
-    passwordHash,
-    email,
-  ]);
+  await docRef.update({
+    password_hash: passwordHash,
+    updated_at: admin.firestore.Timestamp.now(),
+  });
   return true;
 }
 
 export async function updateProfileById(
   id: string | number,
   { name, avatar_url }: { name?: string; avatar_url?: string }
-): Promise<PublicProfile | null> {
+) {
   if (!id) throw new Error("Missing id");
+  const docRef = db.collection("users").doc(String(id));
+  const data: any = {};
+  if (name !== undefined) data.name = name;
+  if (avatar_url !== undefined) data.avatar_url = avatar_url;
+  if (Object.keys(data).length === 0) return null;
+  data.updated_at = admin.firestore.Timestamp.now();
+  await docRef.set(data, { merge: true });
+  const snap = await docRef.get();
+  if (!snap.exists) return null;
+  return toPublic(snap.id, snap.data());
+}
 
-  const now = toMySqlDatetimeUTC(new Date());
-  const sets: string[] = [];
-  const params: any[] = [];
-
-  if (name !== undefined) {
-    sets.push("name = ?");
-    params.push(name);
-  }
-
-  if (avatar_url !== undefined) {
-    sets.push("avatar_url = ?");
-    params.push(avatar_url);
-  }
-
-  if (sets.length === 0) return null;
-
-  params.push(now, id); // updated_at, where id=?
-
-  const sql = `UPDATE users SET ${sets.join(
-    ", "
-  )}, updated_at = ? WHERE id = ?`;
-
-  await run(sql, params);
-
-  const row = await get<RawUserRow>(
-    `SELECT id, email, name, avatar_url, verified FROM users WHERE id = ?`,
-    [id]
-  );
-
-  if (!row) return null;
-
-  return mapRowToUser(row);
+// new helper to set verified flag (used by auth verify route)
+export async function setVerifiedByEmail(email: string): Promise<boolean> {
+  const q = await db
+    .collection("users")
+    .where("email", "==", email)
+    .limit(1)
+    .get();
+  if (q.empty) return false;
+  await q.docs[0].ref.update({
+    verified: true,
+    updated_at: admin.firestore.Timestamp.now(),
+  });
+  return true;
 }

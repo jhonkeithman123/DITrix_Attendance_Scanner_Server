@@ -1,80 +1,99 @@
-import { run, get } from "./userStore.js";
+import db, { admin } from "../config/firestore.js";
 
-/**
- * Row shape returned from email_verification
- */
 type VerificationRow = {
-  id: number;
+  id: string;
   email: string;
   code: string;
   expires_at: string | null;
   attempts: number;
-  created_at: string;
+  created_at: string | null;
 } | null;
 
-/**
- * Return latest verification row for email or null
- * { id, email, code, expires_at, attempts, created_at }
- */
-export async function getVerification(email: string): Promise<VerificationRow> {
-  return get(
-    `SELECT id, email, code, expires_at, attempts, created_at
-     FROM email_verifications
-     WHERE email = ?
-     ORDER BY id DESC
-     LIMIT 1`,
-    [email]
-  );
+function tsToIso(v: any): string | null {
+  if (!v) return null;
+  if (typeof v === "string") return v;
+  if (typeof v.toDate === "function") return v.toDate().toISOString();
+  if (v instanceof Date) return v.toISOString();
+  return null;
 }
 
-/**
- * Insert a verification code. If a non-expired code exists and force=false, keep it.
- * Returns the active row after operation.
- *
- * Note: schema requires created_at (NOT NULL), so we use NOW().
- * expiresIso should be a MySQL DATETIME string or null.
- */
+export async function getVerification(email: string): Promise<VerificationRow> {
+  const q = db
+    .collection("email_verifications")
+    .where("email", "==", email)
+    .orderBy("created_at", "desc")
+    .limit(1);
+  const snap = await q.get();
+  if (snap.empty) return null;
+  const d = snap.docs[0];
+  const data = d.data();
+  return {
+    id: d.id,
+    email: data.email,
+    code: data.code,
+    expires_at: tsToIso(data.expires_at),
+    attempts: data.attempts ?? 0,
+    created_at: tsToIso(data.created_at),
+  };
+}
+
 export async function upsertVerification(
   email: string,
   code: string,
   expiresIso: string | null,
   options: { force?: boolean } = { force: false }
 ): Promise<VerificationRow> {
-  const now = new Date();
   const existing = await getVerification(email);
+  const nowTs = admin.firestore.Timestamp.now();
 
-  if (!options.force && existing) {
-    const expiresAt = existing.expires_at
-      ? new Date(existing.expires_at)
-      : null;
-    if (expiresAt && expiresAt > now) {
-      // keep existing unexpired code
-      return existing;
-    }
+  if (!options.force && existing && existing.expires_at) {
+    const ex = new Date(existing.expires_at);
+    if (ex > new Date()) return existing;
   }
 
-  await run(
-    `INSERT INTO email_verifications (email, code, expires_at, attempts, created_at)
-     VALUES (?, ?, ?, 0, NOW())`,
-    [email, code, expiresIso || null]
-  );
+  const docRef = db.collection("email_verifications").doc();
+  await docRef.set({
+    email,
+    code,
+    expires_at: expiresIso
+      ? admin.firestore.Timestamp.fromDate(new Date(expiresIso))
+      : null,
+    attempts: 0,
+    created_at: nowTs,
+  });
 
-  return await getVerification(email);
+  const snap = await docRef.get();
+  const d = snap.data()!;
+  return {
+    id: docRef.id,
+    email: d.email,
+    code: d.code,
+    expires_at: tsToIso(d.expires_at),
+    attempts: d.attempts ?? 0,
+    created_at: tsToIso(d.created_at),
+  };
 }
 
 export async function deleteVerification(email: string): Promise<void> {
-  await run(`DELETE FROM email_verifications WHERE email = ?`, [email]);
+  const snap = await db
+    .collection("email_verifications")
+    .where("email", "==", email)
+    .get();
+  if (snap.empty) return;
+  const batch = db.batch();
+  snap.docs.forEach((doc) => batch.delete(doc.ref));
+  await batch.commit();
 }
 
-/**
- * Increment attempts on the latest verification row for the email.
- */
 export async function incAttempts(email: string): Promise<boolean> {
-  const row = await getVerification(email);
-  if (!row) return false;
-  await run(
-    `UPDATE email_verifications SET attempts = COALESCE(attempts,0) + 1 WHERE id = ?`,
-    [row.id]
-  );
+  const snap = await db
+    .collection("email_verifications")
+    .where("email", "==", email)
+    .orderBy("created_at", "desc")
+    .limit(1)
+    .get();
+  if (snap.empty) return false;
+  const docRef = snap.docs[0].ref;
+  await docRef.update({ attempts: admin.firestore.FieldValue.increment(1) });
   return true;
 }

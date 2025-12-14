@@ -16,5 +16,13 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 db.settings({ ignoreUndefinedProperties: true });
 
+export function isDbAvailable(): boolean {
+  try {
+    return !!admin.apps.length;
+  } catch {
+    return false;
+  }
+}
+
 export { admin };
 export default db;
