@@ -9,7 +9,6 @@ import routerAuth from "./routes/auth.js";
 import routerProfile from "./routes/profile.js";
 import health from "./routes/health.js";
 import routerSharedCaptures from "./routes/shared_capture.js";
-import dbCheck from "./middleware/db_check.js";
 
 dotenv.config();
 const app: Express = express();
@@ -28,9 +27,6 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
   }
   next();
 });
-
-// per-request DB availability check
-app.use(dbCheck);
 
 app.use((req: Request, res: Response, next: NextFunction) => {
   const ct = (req.headers["content-type"] || "").toString().toLowerCase();

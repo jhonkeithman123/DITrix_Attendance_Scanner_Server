@@ -1,6 +1,5 @@
 import express, { Request, Response } from "express";
 import authMiddleware from "../middleware/authMiddleware.js";
-import { DBAvailable } from "../middleware/db_check.js";
 import {
   createSharedCapture,
   findSharedCapturesByUser,
@@ -18,6 +17,7 @@ import {
   getAllStudents,
 } from "../services/sharedCaptureStoreService.js";
 import { findByEmail } from "../services/userStore.js";
+import { isDbAvailable } from "../config/firestore.js";
 
 type AuthRequest = Request & {
   user?: { id: string };
@@ -32,18 +32,17 @@ router
   .route("/")
   // GET /shared-captures - List all captures (owned + shared)
   .get(async (req: AuthRequest, res: Response) => {
-    if (!DBAvailable(req, res)) return;
+    if (!isDbAvailable()) return;
 
     const userId = parseInt(req.user?.id || "0", 10);
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
     try {
-      const owned = await findSharedCapturesByUser(userId);
-
+      const lists = await findSharedCapturesByUser(userId);
       return res.json({
         status: "ok",
-        owned: owned.owned,
-        shared: owned.shared,
+        owned: lists.owned,
+        shared: lists.shared,
       });
     } catch (e) {
       console.error("[shared-captures] list error:", e);
@@ -52,7 +51,7 @@ router
   })
   // POST /shared-captures - Create new shared capture
   .post(async (req: AuthRequest, res: Response) => {
-    if (!DBAvailable(req, res)) return;
+    if (!isDbAvailable()) return;
 
     const userId = parseInt(req.user?.id || "0", 10);
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
@@ -114,7 +113,7 @@ router
 router
   .route("/:id") // GET /shared-captures/:id - Get single capture with roster
   .get(async (req: AuthRequest, res: Response) => {
-    if (!DBAvailable(req, res)) return;
+    if (!isDbAvailable()) return;
 
     const userId = parseInt(req.user?.id || "0", 10);
     const { id } = req.params;
@@ -145,7 +144,7 @@ router
     }
   }) // PATCH /shared-captures/:id - Update capture metadata
   .patch(async (req: AuthRequest, res: Response) => {
-    if (!DBAvailable(req, res)) return;
+    if (!isDbAvailable()) return;
 
     const userId = parseInt(req.user?.id || "0", 10);
     const { id } = req.params;
@@ -173,7 +172,7 @@ router
     }
   })
   .put(async (req: AuthRequest, res: Response) => {
-    if (!DBAvailable(req, res)) return;
+    if (!isDbAvailable()) return;
     const userId = parseInt(req.user?.id || "0", 10);
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
@@ -201,7 +200,6 @@ router
           .json({ error: "Only owner or co-owner may change subject/time" });
       }
 
-      // update metadata (updateSharedCapture doesn't accept roster)
       const updated = await updateSharedCapture(id, {
         subject: body.subject,
         date: body.date,
@@ -221,7 +219,7 @@ router
     }
   }) // DELETE /shared-captures/:id - Delete capture
   .delete(async (req: AuthRequest, res: Response) => {
-    if (!DBAvailable(req, res)) return;
+    if (!isDbAvailable()) return;
 
     const userId = parseInt(req.user?.id || "0", 10);
     const { id } = req.params;
@@ -244,7 +242,7 @@ router
 
 // POST /shared-captures/:id/join - Join by share code
 router.post("/join/:code", async (req: AuthRequest, res: Response) => {
-  if (!DBAvailable(req, res)) return;
+  if (!isDbAvailable()) return;
 
   const userId = parseInt(req.user?.id || "0", 10);
   const { code } = req.params;
@@ -282,7 +280,7 @@ router.post("/join/:code", async (req: AuthRequest, res: Response) => {
 
 // POST /shared-captures/:id/collaborators - Add collaborator by email
 router.post("/:id/collaborators", async (req: AuthRequest, res: Response) => {
-  if (!DBAvailable(req, res)) return;
+  if (!isDbAvailable()) return;
 
   const userId = parseInt(req.user?.id || "0", 10);
   const { id } = req.params;
@@ -319,7 +317,7 @@ router.post("/:id/collaborators", async (req: AuthRequest, res: Response) => {
 
 // GET /shared-captures/students/list - Get all students for invitation
 router.get("/students/list", async (req: AuthRequest, res: Response) => {
-  if (!DBAvailable(req, res)) return;
+  if (!isDbAvailable()) return;
 
   const userId = parseInt(req.user?.id || "0", 10);
   if (!userId) return res.status(401).json({ error: "Unauthorized" });
@@ -337,7 +335,7 @@ router.get("/students/list", async (req: AuthRequest, res: Response) => {
 router.delete(
   "/:id/collaborators/:collabId",
   async (req: AuthRequest, res: Response) => {
-    if (!DBAvailable(req, res)) return;
+    if (!isDbAvailable()) return;
 
     const userId = parseInt(req.user?.id || "0", 10);
     const { id, collabId } = req.params;

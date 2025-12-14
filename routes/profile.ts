@@ -1,11 +1,10 @@
 import express, { Request, Response } from "express";
 import authMiddleware from "../middleware/authMiddleware.js";
 import { findById, updateProfileById } from "../services/userStore.js";
-import db from "../config/db.js";
-import { DBAvailable } from "../middleware/db_check.js";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import { isDbAvailable } from "../config/firestore.js";
 
 const router = express.Router();
 
@@ -50,7 +49,7 @@ router
   .all(authMiddleware)
   // GET /profile -> return current user's profile
   .get(async (req: AuthRequest, res: Response) => {
-    if (!DBAvailable(req, res)) return;
+    if (!isDbAvailable()) return;
 
     try {
       const userId = req.user?.id;
@@ -67,7 +66,7 @@ router
   })
   // PUT /profile -> update name/avatar (body: { name, avatarBase64 })
   .put(upload.single("avatar"), async (req: AuthRequest, res: Response) => {
-    if (!DBAvailable(req, res)) return;
+    if (!isDbAvailable()) return;
 
     // Log multer result and body for debugging (do NOT log large base64 bodies in production)
     console.log(
