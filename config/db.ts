@@ -18,6 +18,9 @@ const {
   DB_SSL_REJECT_UNAUTHORIZED = "false",
 } = process.env;
 
+// normalize max attempts: 0 means retry forever
+const MAX_DB_RETRY = Number(DB_RETRY_ATTEMPTS || 0);
+
 const IS_SERVERLESS =
   process.env.VERCEL === "1" || process.env.IS_SERVERLESS === "true";
 
@@ -34,8 +37,26 @@ async function tryConnectOnce(): Promise<boolean> {
   try {
     const mysql = await import("mysql2/promise");
 
+    // If we've already failed 3 or more times, fall back to localhost to allow local dev/testing.
+    // Use a local variable so we don't accidentally break other env usage; also write back to process.env
+    // so future attempts and logs reflect the change.
+    const requestedHost = process.env.DB_HOST;
+    let effectiveHost = requestedHost;
+    if (
+      (attempts || 0) >= 3 &&
+      requestedHost &&
+      requestedHost !== "127.0.0.1" &&
+      requestedHost !== "localhost"
+    ) {
+      console.warn(
+        `[DB] ${attempts} failed attempts — reverting DB host ${requestedHost} -> 127.0.0.1`
+      );
+      effectiveHost = "127.0.0.1";
+      process.env.DB_HOST = effectiveHost;
+    }
+
     const poolOptions: PoolOptions = {
-      host: process.env.DB_HOST,
+      host: effectiveHost,
       port: Number(process.env.DB_PORT || 3306),
       user: process.env.DB_USER,
       password: process.env.DB_PASS,
@@ -147,27 +168,59 @@ async function queryWithTimeout<T = RowDataPacket[]>(
 async function connectLoop(): Promise<void> {
   if (connecting) return;
   connecting = true;
-  console.log("Starting DB connect loop to", process.env.DB_HOST);
-  while (!pool) {
+  console.log(
+    "Starting DB connect loop to",
+    process.env.DB_HOST,
+    "maxAttempts=",
+    MAX_DB_RETRY
+  );
+  try {
     const ok = await tryConnectOnce();
-    if (ok) break;
-    if (SKIP_DB_ON_START === "true" && attempts > 0) {
-      console.warn(
-        "SKIP_DB_ON_START=true — continuing without DB. Will still retry in background."
-      );
-      break;
+    if (ok) {
+      connecting = false;
+      return;
     }
-    const backoff = Math.min(
-      Number(DB_RETRY_BACKOFF_MS) * Math.max(1, attempts),
-      60_000
-    );
-    await new Promise((r) => setTimeout(r, backoff));
+  } catch (e) {
+    console.warn("[DB] initial tryConnectOnce threw:", e);
   }
+
+  // schedule polling retries regardless of how the initial loop ended so we don't stop after 1 attempt
+  const pollInterval = Math.max(5000, Number(DB_RETRY_BACKOFF_MS));
+  const poller = setInterval(async () => {
+    if (pool) {
+      clearInterval(poller);
+      return;
+    }
+    if (MAX_DB_RETRY > 0 && attempts >= MAX_DB_RETRY) {
+      console.warn(
+        `[DB] reached configured max retry attempts (${MAX_DB_RETRY}), stopping background retries`
+      );
+      clearInterval(poller);
+      return;
+    }
+    console.log(`[DB] background retry attempt ${attempts + 1}`);
+    try {
+      await tryConnectOnce();
+    } catch (e) {
+      console.warn("[DB] background tryConnectOnce error:", e);
+    }
+  }, pollInterval);
+
   connecting = false;
   if (!pool) {
-    setInterval(async () => {
-      if (!pool) await tryConnectOnce();
-    }, Math.max(5000, Number(DB_RETRY_BACKOFF_MS)));
+    // start background retry timer only if retries are allowed
+    const pollInterval = Math.max(5000, Number(DB_RETRY_BACKOFF_MS));
+    const shouldPoll = MAX_DB_RETRY === 0 || attempts < MAX_DB_RETRY;
+    if (shouldPoll) {
+      setInterval(async () => {
+        // respect max attempts during background polling too
+        if (pool) return;
+        if (MAX_DB_RETRY > 0 && attempts >= MAX_DB_RETRY) return;
+        await tryConnectOnce();
+      }, pollInterval);
+    } else {
+      console.info("[DB] background retry disabled (max attempts reached)");
+    }
   }
 }
 

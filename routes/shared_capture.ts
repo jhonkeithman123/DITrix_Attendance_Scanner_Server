@@ -201,7 +201,6 @@ router
           .json({ error: "Only owner or co-owner may change subject/time" });
       }
 
-      // update metadata (updateSharedCapture doesn't accept roster)
       const updated = await updateSharedCapture(id, {
         subject: body.subject,
         date: body.date,

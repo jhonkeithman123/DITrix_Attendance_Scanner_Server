@@ -1,7 +1,6 @@
 import express, { Request, Response } from "express";
 import authMiddleware from "../middleware/authMiddleware.js";
 import { findById, updateProfileById } from "../services/userStore.js";
-import db from "../config/db.js";
 import { DBAvailable } from "../middleware/db_check.js";
 import multer from "multer";
 import path from "path";
