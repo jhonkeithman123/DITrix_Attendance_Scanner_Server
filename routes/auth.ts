@@ -42,75 +42,35 @@ router.get("/debug/session-by-token", async (req: Request, res: Response) => {
 });
 
 router.get("/session", async (req: Request, res: Response) => {
-  if (!isDbAvailable()) return;
+  if (!isDbAvailable())
+    return res.status(503).json({ error: "Database unavailable" });
 
   try {
     const auth = (req.headers.authorization || "").toString();
     if (!auth.startsWith("Bearer "))
       return res.status(401).json({ error: "Missing token" });
 
-    const token = auth.split(" ")[1];
+    const token = auth.split(" ")[1].trim();
+    if (!token) return res.status(401).json({ error: "Missing token" });
 
     console.log("[auth/session] token(head):", token.slice(0, 12));
 
-    // check session db
-    const row = await findSessionByToken(token);
-    console.log("[auth/session] db match:", !!row, "row:", row);
-    if (!row) {
-      console.warn("[auth/session] no session row found -> invalid session");
-      return res.status(401).json({ error: "Invalid session" });
+    let decoded: any;
+    try {
+      decoded = await admin.auth().verifyIdToken(token);
+    } catch (e) {
+      console.error("[auth/session] verifyIdToken failed:", e);
+      return res.status(401).json({ error: "Invalid or expired token" });
     }
 
-    const expiresDate = parseDbDateUtc(row.expires_at as string | null);
-    console.log(
-      "[auth/session] expires_at raw:",
-      row.expires_at,
-      "parsed:",
-      expiresDate?.toISOString() ?? null
-    );
+    const uid = decoded.uid as string | undefined;
+    const email = decoded.email as string | undefined;
+    if (!uid && !email)
+      return res.status(401).json({ error: "Invalud token payload" });
 
-    // treat missing/invalid DB expiry as expired -> delete and reject
-    if (!expiresDate) {
-      console.warn(
-        "[auth/session] invalid/missing expires_at -> deleting session",
-        row.id
-      );
-      await deleteSession(token);
-      return res.status(401).json({ error: "Invalid session" });
-    }
-
-    if (expiresDate && expiresDate < new Date()) {
-      console.warn(
-        "[auth/session] session expired at",
-        expiresDate.toISOString(),
-        "now:",
-        new Date().toISOString()
-      );
-      // session expired -> delete and reject
-      await deleteSession(token);
-      return res.status(401).json({ error: "Session expired" });
-    }
-
-    // if JWT_SECRET configured, also verify signature (optional but recommended)
-    if (process.env.JWT_SECRET) {
-      try {
-        jwt.verify(token, process.env.JWT_SECRET);
-        console.log("[auth/session] jwt.verify => ok");
-      } catch (e) {
-        console.warn("[auth/session] jwt.verify failed:", e);
-        // invalid signature -> delete db row and reject
-        await deleteSession(token);
-        return res.status(401).json({ error: "Invalid token" });
-      }
-    }
-
-    // fetch user profile by user_id
-    console.log("[auth/session] fetching user by id:", row.user_id);
-    const user = await findUserById(row.user_id);
-    if (!user) {
-      console.warn("[auth/session] user not found for user_id:", row.user_id);
-      return res.status(404).json({ error: "User not found" });
-    }
+    let user = uid ? await findUserById(uid) : null;
+    if (!user && email) user = await findByEmail(email);
+    if (!user) return res.status(404).json({ error: "User not found" });
 
     return res.json({
       status: "ok",
