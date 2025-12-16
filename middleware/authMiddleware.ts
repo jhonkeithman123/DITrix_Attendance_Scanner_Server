@@ -33,15 +33,19 @@ export default async function authMiddleware(
 ) {
   try {
     const auth = (req.headers?.authorization || "").trim();
+    console.log("[auth] authorization header:", auth?.slice(0, 80));
+
     if (!auth || !auth.toLowerCase().startsWith("bearer ")) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
     const parts = auth.split(" ");
     const token = parts[1];
-    if (!token) return res.status(401).json({ error: "Unauthorized" });
+    console.log("[auth] token:", token?.slice(0, 8));
 
     const session = await findSessionByToken(token);
+    console.log("[auth] session:", session);
+
     if (!session) return res.status(401).json({ error: "Invalid session" });
 
     if (session.expires_at && new Date(session.expires_at) < new Date()) {
@@ -66,15 +70,18 @@ export default async function authMiddleware(
           return res.status(401).json({ error: "Invalid token" });
         }
       } catch (e: any) {
+        console.log("[auth] jwt.verify error:", e);
         await deleteSession(token).catch(() => {});
-        return res.status(500).json({ error: "Server error" });
+        return res.status(500).json({ error: "Invalid token" });
       }
     }
 
     const userId = session.user_id ?? payload?.id ?? null;
+    console.log("[auth] resolved userId:", userId);
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
     const user = await findUserById(userId);
+    console.log("[auth] user:", !!user);
     if (!user) return res.status(404).json({ error: "User not found" });
 
     // attach a minimal user object and raw token to request
@@ -84,7 +91,6 @@ export default async function authMiddleware(
       email: user.email,
       avatar_url: user.avatar_url,
     };
-
     req.authToken = token;
     return next();
   } catch (err) {
