@@ -1,11 +1,6 @@
-import { findSessionByToken, deleteSession } from "../services/sessionStore.js";
-import { findById as findUserById } from "../services/userStore.js";
 import { Request, Response, NextFunction } from "express";
-import type { JwtPayload } from "jsonwebtoken";
-import jwt from "jsonwebtoken";
-import dotenv from "dotenv";
-
-dotenv.config();
+import { admin } from "../config/firestore.js";
+import { findById, findByEmail } from "../services/userStore";
 
 type PublicUser = {
   id: string | number;
@@ -13,88 +8,54 @@ type PublicUser = {
   name?: string | null;
   avatar_url?: string | null;
 };
+type AuthRequest = Request & { user?: PublicUser; authToken?: string };
 
-type AuthRequest = Request & {
-  user?: PublicUser;
-  authToken?: string;
-};
-
-/**
- * Auth middleware:
- * - expects Authorization: Bearer <token>
- * - requires a session row for the token (sessions.id == token)
- * - if JWT_SECRET present, verifies signature as well
- * - attaches req.user with the user's public profile
- */
 export default async function authMiddleware(
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ) {
   try {
-    const auth = (req.headers?.authorization || "").trim();
-    console.log("[auth] authorization header:", auth?.slice(0, 80));
+    if (req.method === "OPTIONS") return next();
 
-    if (!auth || !auth.toLowerCase().startsWith("bearer ")) {
+    const auth = (req.headers.authorization || "").trim();
+    if (!auth || !auth.toLowerCase().startsWith("bearer "))
       return res.status(401).json({ error: "Unauthorized" });
+    const idToken = auth.split(" ")[1];
+
+    //verify Firebase ID token
+    let decoded: any;
+    try {
+      decoded = await admin.auth().verifyIdToken(idToken);
+    } catch (e) {
+      console.error("[auth] verifyIdToken failed:", e);
+      return res.status(401).json({ error: "Invlaid or expired token" });
     }
 
-    const parts = auth.split(" ");
-    const token = parts[1];
-    console.log("[auth] token:", token?.slice(0, 8));
+    const uid = decoded.uid;
+    const email = (decoded as any).email as string | undefined;
 
-    const session = await findSessionByToken(token);
-    console.log("[auth] session:", session);
+    // try to find the user document uid, then by email
+    let user = uid ? await findById(uid) : null;
+    if (!user && email) user = await findByEmail(email);
 
-    if (!session) return res.status(401).json({ error: "Invalid session" });
+    // TODO: auto-create user doc if not present
+    // if (!user && email) {
+    //   user = await createUserFromFirebase({ uid, email, name: decoded.name });
+    // }
 
-    if (session.expires_at && new Date(session.expires_at) < new Date()) {
-      // cleanup expired session
-      try {
-        await deleteSession(token);
-      } catch (_) {}
-      return res.status(401).json({ error: "Session expired" });
-    }
+    if (!user) return res.status(404).json({ error: "User not found." });
 
-    // verify JWT signature when configured
-    let payload: (JwtPayload & { id?: string }) | null = null;
-    if (process.env.JWT_SECRET) {
-      try {
-        const verified = jwt.verify(token, process.env.JWT_SECRET);
-        if (typeof verified === "object" && verified !== null) {
-          // cast to JWTPayload and allow an optional id field
-          payload = verified as JwtPayload & { id?: string };
-        } else {
-          // string payloads are not supported for my tokens
-          await deleteSession(token).catch(() => {});
-          return res.status(401).json({ error: "Invalid token" });
-        }
-      } catch (e: any) {
-        console.log("[auth] jwt.verify error:", e);
-        await deleteSession(token).catch(() => {});
-        return res.status(500).json({ error: "Invalid token" });
-      }
-    }
-
-    const userId = session.user_id ?? payload?.id ?? null;
-    console.log("[auth] resolved userId:", userId);
-    if (!userId) return res.status(401).json({ error: "Unauthorized" });
-
-    const user = await findUserById(userId);
-    console.log("[auth] user:", !!user);
-    if (!user) return res.status(404).json({ error: "User not found" });
-
-    // attach a minimal user object and raw token to request
     req.user = {
       id: user.id,
-      name: user.name,
       email: user.email,
+      name: user.name,
       avatar_url: user.avatar_url,
     };
-    req.authToken = token;
+    req.authToken = idToken;
     return next();
   } catch (err) {
-    console.error("auth middleware error:", err);
-    return res.status(500).json({ error: "Authentication failed" });
+    console.error("auth middleware errro:", err);
+    return res.status(500).json({ errro: "Authentication failed." });
   }
 }

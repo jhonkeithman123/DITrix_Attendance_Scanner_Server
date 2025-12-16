@@ -1,5 +1,4 @@
 import bcrypt from "bcryptjs";
-import { v4 as uuidv4 } from "uuid";
 import db, { admin } from "../config/firestore.js";
 
 type PublicProfile = {
@@ -7,8 +6,19 @@ type PublicProfile = {
   email: string;
   name: string;
   avatar_url: string;
+  verified: boolean;
+  passwordHash?: string | null;
   created_at: string | null;
+  updated_at?: string | null;
 };
+
+function toIso(v: any): string | null {
+  if (!v) return null;
+  if (typeof v === "string") return v;
+  if (typeof v.toDate === "function") return v.toDate().toISOString();
+  if (v instanceof Date) return v.toISOString();
+  return null;
+}
 
 function toPublic(id: string, data: any): PublicProfile {
   return {
@@ -16,7 +26,10 @@ function toPublic(id: string, data: any): PublicProfile {
     email: data.email,
     name: data.name ?? "",
     avatar_url: data.avatar_url ?? "",
-    created_at: data.created_at ? data.created_at.toDate().toISOString() : null,
+    verified: !!data.verified,
+    passwordHash: data.password_hash || null,
+    created_at: toIso(data.created_at),
+    updated_at: toIso(data.updated_at),
   };
 }
 
