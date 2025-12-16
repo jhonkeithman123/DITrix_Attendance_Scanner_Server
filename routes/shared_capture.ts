@@ -59,37 +59,16 @@ router
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
     const { id, subject, date, start_time, end_time, roster } = req.body || {};
-    console.log("[shared-captures/]:");
-    console.table(req.body);
 
     try {
       // Prevent duplicate subject names for the same owner (case insentitive)
-      if (subject && typeof subject === "string") {
-        const ownedRes = await findSharedCapturesByUser(userId);
-        const ownedList = ownedRes?.owned ?? [];
-        const normalized = subject.trim().toLowerCase();
-        if (
-          ownedList.some(
-            (c: any) =>
-              ((c.subject || "") as string).trim().toLowerCase() === normalized
-          )
-        ) {
-          return res.status(409).json({
-            error: "Duplicate subject",
-            message: "You already have shared capture with this subject",
-          });
-        }
-      }
-      // Check if this capture ID already exists
-      const alreadyUploaded = await captureAlreadyUploaded(id);
-      if (alreadyUploaded) {
-        return res.status(409).json({
-          error: "Duplicate upload",
-          message: "This capture session has already been uploaded",
-        });
+      if (await captureAlreadyUploaded(id)) {
+        return res
+          .status(409)
+          .json({ error: "Capture already uploaded for this session" });
       }
 
-      const { captureId, shareCode } = await createSharedCapture(userId, {
+      const created = await createSharedCapture(userId, {
         id,
         subject,
         date,
@@ -97,14 +76,14 @@ router
         end_time,
       });
 
-      // If roster provided, insert it
-      if (roster && Array.isArray(roster) && roster.length > 0) {
-        await upsertRoster(captureId, roster);
+      if (Array.isArray(roster) && roster.length > 0) {
+        await upsertRoster(created.captureId, roster);
       }
 
       return res.status(201).json({
         status: "ok",
-        capture: { id: captureId, share_code: shareCode },
+        cpatureId: created.captureId,
+        shareCode: created.shareCode,
       });
     } catch (e) {
       console.error("[shared-captures] create error:", e);
@@ -126,20 +105,31 @@ router
     try {
       const access = await hasAccess(userId, id);
       if (!access.hasAccess) {
-        return res.status(403).json({ error: "Access denied" });
+        return res.status(403).json({ error: "Forbidden" });
       }
 
       const capture = await findSharedCaptureById(id);
-      if (!capture) {
-        return res.status(404).json({ error: "Capture not found" });
-      }
+      if (!capture) return res.status(404).json({ error: "Not found" });
 
       const roster = await getRoster(id);
       const collaborators = await getCollaborators(id);
 
+      const rosterForClient = roster.map((r) => ({
+        id: r.student_id,
+        name: r.student_name,
+        present: r.present,
+        time: r.time_marked,
+        status: r.status,
+      }));
+
       return res.json({
         status: "ok",
-        capture: { ...capture, roster, collaborators, role: access.role },
+        capture: {
+          ...capture,
+          roster: rosterForClient,
+          collaborators,
+          role: access.role ?? "viewer",
+        },
       });
     } catch (e) {
       console.error("[shared-captures] get error:", e);
@@ -152,24 +142,50 @@ router
 
     const userId = req.user?.id;
     const { id } = req.params;
-
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
+    const { subject, date, start_time, end_time, roster } = req.body || {};
     try {
       const access = await hasAccess(userId, id);
-      if (!access.hasAccess || access.role === "viewer") {
-        return res.status(403).json({ error: "Access denied" });
+      if (!access.hasAccess) {
+        return res.status(403).json({ error: "Forbidden" });
       }
 
-      const { subject, date, start_time, end_time, roster } = req.body || {};
+      const updates: any = {};
+      if (subject !== undefined) updates.subject = subject;
+      if (date !== undefined) updates.date = date;
+      if (start_time !== undefined) updates.start_time = start_time;
+      if (end_time !== undefined) updates.end_time = end_time;
 
-      await updateSharedCapture(id, { subject, date, start_time, end_time });
+      const updated = await updateSharedCapture(id, {
+        subject,
+        date,
+        start_time,
+        end_time,
+      });
 
-      if (roster && Array.isArray(roster)) {
+      if (Array.isArray(roster)) {
         await upsertRoster(id, roster);
       }
 
-      return res.json({ status: "ok", message: "Capture updated" });
+      const newRoster = await getRoster(id);
+      const rosterForClient = newRoster.map((r) => ({
+        id: r.student_id,
+        name: r.student_name,
+        present: r.present,
+        time: r.time_marked,
+        status: r.status,
+      }));
+
+      return res.json({
+        status: "ok",
+        message: "Capture updated",
+        capture: {
+          ...updated,
+          role: access.role ?? "viewer",
+          roster: rosterForClient,
+        },
+      });
     } catch (e) {
       console.error("[shared-captures] update error:", e);
       return res.status(500).json({ error: "Failed to update capture" });
@@ -180,45 +196,17 @@ router
       return res.status(503).json({ error: "Database unavailable" });
 
     const userId = req.user?.id;
+    const { id } = req.params;
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-    const { id } = req.params;
-    const body = req.body || {};
     try {
       const access = await hasAccess(userId, id);
-      if (!access?.hasAccess)
-        return res.status(403).json({ error: "Forbidden" });
-
-      // If client attempts to change subject/start_time/end_time, ensure role is owner or editor.
-      const tryingToChangeMetadata =
-        Object.prototype.hasOwnProperty.call(body, "subject") ||
-        Object.prototype.hasOwnProperty.call(body, "start_time") ||
-        Object.prototype.hasOwnProperty.call(body, "end_time") ||
-        Object.prototype.hasOwnProperty.call(body, "date");
-
-      if (
-        tryingToChangeMetadata &&
-        access.role !== "owner" &&
-        access.role !== "editor"
-      ) {
-        return res
-          .status(403)
-          .json({ error: "Only owner or co-owner may change subject/time" });
+      if (!access?.hasAccess || access.role !== "owner") {
+        return res.status(403).json({ error: "Only owner can delete" });
       }
 
-      const updated = await updateSharedCapture(id, {
-        subject: body.subject,
-        date: body.date,
-        start_time: body.start_time,
-        end_time: body.end_time,
-      });
-
-      // update roster separately if provided
-      if (body.roster && Array.isArray(body.roster)) {
-        await upsertRoster(id, body.roster);
-      }
-
-      return res.json({ status: "ok", capture: updated });
+      await deleteSharedCapture(id);
+      return res.json({ status: "ok" });
     } catch (e) {
       console.error("[shared-captures] update error:", e);
       return res.status(500).json({ error: "Failed to update capture" });
@@ -315,7 +303,7 @@ router.post("/:id/collaborators", async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    await addCollaborator(id, parseInt(String(user.id)), role || "viewer");
+    await addCollaborator(id, userId, role || "viewer");
 
     return res.json({ status: "ok", message: "Collaborator added" });
   } catch (e) {
