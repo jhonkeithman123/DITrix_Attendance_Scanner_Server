@@ -39,18 +39,39 @@ export default async function authMiddleware(
     let user = uid ? await findById(uid) : null;
     if (!user && email) user = await findByEmail(email);
 
-    // TODO: auto-create user doc if not present
-    // if (!user && email) {
-    //   user = await createUserFromFirebase({ uid, email, name: decoded.name });
-    // }
+    if (!user && (uid || email)) {
+      const now = admin.firestore.FieldValue.serverTimestamp();
+      const docRef = admin
+        .firestore()
+        .collection("users")
+        .doc(uid || email);
+      await docRef.set(
+        {
+          email: email ?? null,
+          name: decoded.name ?? null,
+          avatar_url: decoded.picture ?? null,
+          verified: true,
+          created_at: now,
+          updated_at: now,
+        },
+        { merge: true }
+      );
+      user = {
+        id: uid || email || docRef.id,
+        email: email ?? null,
+        name: decoded.name,
+        avatar_url: decoded.picture ?? null,
+        verified: true,
+      } as any;
+    }
 
     if (!user) return res.status(404).json({ error: "User not found." });
 
     req.user = {
       id: user.id,
-      email: user.email,
-      name: user.name,
-      avatar_url: user.avatar_url,
+      email: (user as any).email,
+      name: (user as any).name,
+      avatar_url: (user as any).avatar_url,
     };
     req.authToken = idToken;
     return next();

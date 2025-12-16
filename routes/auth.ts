@@ -7,6 +7,7 @@ import {
   verifyPassword,
   findById as findUserById,
 } from "../services/userStore.js";
+import { admin } from "../config/firestore.js";
 import {
   upsertVerification,
   getVerification,
@@ -254,11 +255,36 @@ router.post("/signup", async (req: Request, res: Response) => {
     const existing = await findByEmail(email);
     if (existing) return res.status(400).json({ error: "User already exists" });
 
-    const existingByName = await findOneBy("name", name.trim());
-    if (existingByName)
-      return res.status(409).json({ error: "Username already taken" });
+    if (name && typeof name === "string") {
+      const existingByName = await findOneBy("name", name.trim());
+      if (existingByName)
+        return res.status(409).json({ error: "Username already taken" });
+    }
 
-    const user = await createUser({ email, password, name: name || "" });
+    let fbUser;
+    try {
+      fbUser = await admin.auth().createUser({
+        email,
+        password,
+        displayName: name || undefined,
+      });
+    } catch (e: any) {
+      console.error("[signup] admin.auth().createuser error:", e);
+      const code = e?.code || "";
+      if (code === "auth/email-already-exists") {
+        return res.status(400).json({ error: "User already exists" });
+      }
+      return res
+        .status(500)
+        .json({ error: "Failed to create auth user (server error)" });
+    }
+
+    const user = await createUser({
+      uid: fbUser.uid,
+      email,
+      name: name || "",
+      avatar_url: fbUser.photoURL || "",
+    });
 
     const code = generateCode();
     const expires = toMySqlDatetimeUTC(new Date(Date.now() + 1000 * 60 * 15));

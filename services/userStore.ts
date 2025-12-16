@@ -73,34 +73,36 @@ export async function findById(id: string | number) {
   };
 }
 
-export async function createUser({
-  email,
-  password,
-  name = "",
-}: {
+export async function createUser(params: {
+  uid: string;
   email: string;
-  password: string;
   name?: string;
+  avatar_url?: string;
 }) {
-  const existing = await findByEmail(email);
-  if (existing) throw new Error("UserExists");
-  const passwordHash = await bcrypt.hash(password, 10);
+  const { uid, email, name = "", avatar_url = "" } = params;
   const now = admin.firestore.Timestamp.now();
-  const docRef = db.collection("users").doc(); // auto id
-  await docRef.set({
-    email,
-    password_hash: passwordHash,
-    name,
-    avatar_url: "",
-    created_at: now,
-    verified: false,
-  });
+
+  const docRef = db.collection("users").doc(uid); // auto id
+  await docRef.set(
+    {
+      email,
+      name,
+      avatar_url: "",
+      verified: false,
+      created_at: now,
+      updated_at: now,
+    },
+    { merge: true }
+  );
+
   return {
     id: docRef.id,
     email,
     name,
+    verified: false,
     avatar_url: "",
     created_at: now.toDate().toISOString(),
+    updated_at: now.toDate().toISOString(),
   };
 }
 
