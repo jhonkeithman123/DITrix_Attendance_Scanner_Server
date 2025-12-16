@@ -8,7 +8,7 @@ function tsToIso(v: any): string | null {
   return null;
 }
 
-export async function createSharedCapture(ownerId: string | number, data: any) {
+export async function createSharedCapture(ownerId: string, data: any) {
   const id = data.id ?? db.collection("shared_captures").doc().id;
   const shareCode =
     data.share_code ?? Math.random().toString(36).slice(2, 9).toUpperCase();
@@ -31,7 +31,7 @@ export async function createSharedCapture(ownerId: string | number, data: any) {
   return { captureId: String(id), shareCode };
 }
 
-export async function findSharedCapturesByUser(userId: number) {
+export async function findSharedCapturesByUser(userId: string) {
   const userStr = String(userId);
   const ownedSnap = await db
     .collection("shared_captures")
@@ -215,7 +215,7 @@ export async function getRoster(captureId: string) {
 
 export async function addCollaborator(
   captureId: string,
-  userId: number,
+  userId: string | number,
   role: "viewer" | "editor" = "viewer"
 ) {
   const docRef = db
@@ -233,7 +233,10 @@ export async function addCollaborator(
   );
 }
 
-export async function removeCollaborator(captureId: string, userId: number) {
+export async function removeCollaborator(
+  captureId: string,
+  userId: string | number
+) {
   await db
     .collection("shared_captures")
     .doc(captureId)
@@ -258,7 +261,7 @@ export async function getCollaborators(captureId: string) {
   });
 }
 
-export async function hasAccess(userId: number, captureId: string) {
+export async function hasAccess(userId: string, captureId: string) {
   const userStr = String(userId);
   const doc = await db.collection("shared_captures").doc(captureId).get();
   if (!doc.exists) return { hasAccess: false };
@@ -277,7 +280,7 @@ export async function hasAccess(userId: number, captureId: string) {
   return { hasAccess: false };
 }
 
-export async function captureAlreadyUploaded(id?: string | number | null) {
+export async function captureAlreadyUploaded(id?: string | null) {
   if (!id) return false;
   const doc = await db.collection("shared_captures").doc(String(id)).get();
   return doc.exists;

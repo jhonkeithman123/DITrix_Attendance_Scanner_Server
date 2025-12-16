@@ -49,7 +49,8 @@ router
   .all(authMiddleware)
   // GET /profile -> return current user's profile
   .get(async (req: AuthRequest, res: Response) => {
-    if (!isDbAvailable()) return;
+    if (!isDbAvailable())
+      return res.status(503).json({ error: "Database unavailable" });
 
     try {
       const userId = req.user?.id;
@@ -66,7 +67,8 @@ router
   })
   // PUT /profile -> update name/avatar (body: { name, avatarBase64 })
   .put(upload.single("avatar"), async (req: AuthRequest, res: Response) => {
-    if (!isDbAvailable()) return;
+    if (!isDbAvailable())
+      return res.status(503).json({ error: "Database unavailable" });
 
     // Log multer result and body for debugging (do NOT log large base64 bodies in production)
     console.log(

@@ -32,9 +32,10 @@ router
   .route("/")
   // GET /shared-captures - List all captures (owned + shared)
   .get(async (req: AuthRequest, res: Response) => {
-    if (!isDbAvailable()) return;
+    if (!isDbAvailable())
+      return res.status(503).json({ error: "Database unavailable" });
 
-    const userId = parseInt(req.user?.id || "0", 10);
+    const userId = req.user?.id;
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
     try {
@@ -51,9 +52,10 @@ router
   })
   // POST /shared-captures - Create new shared capture
   .post(async (req: AuthRequest, res: Response) => {
-    if (!isDbAvailable()) return;
+    if (!isDbAvailable())
+      return res.status(503).json({ error: "Database unavailable" });
 
-    const userId = parseInt(req.user?.id || "0", 10);
+    const userId = req.user?.id;
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
     const { id, subject, date, start_time, end_time, roster } = req.body || {};
@@ -113,9 +115,10 @@ router
 router
   .route("/:id") // GET /shared-captures/:id - Get single capture with roster
   .get(async (req: AuthRequest, res: Response) => {
-    if (!isDbAvailable()) return;
+    if (!isDbAvailable())
+      return res.status(503).json({ error: "Database unavailable" });
 
-    const userId = parseInt(req.user?.id || "0", 10);
+    const userId = req.user?.id;
     const { id } = req.params;
 
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
@@ -144,9 +147,10 @@ router
     }
   }) // PATCH /shared-captures/:id - Update capture metadata
   .patch(async (req: AuthRequest, res: Response) => {
-    if (!isDbAvailable()) return;
+    if (!isDbAvailable())
+      return res.status(503).json({ error: "Database unavailable" });
 
-    const userId = parseInt(req.user?.id || "0", 10);
+    const userId = req.user?.id;
     const { id } = req.params;
 
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
@@ -172,8 +176,10 @@ router
     }
   })
   .put(async (req: AuthRequest, res: Response) => {
-    if (!isDbAvailable()) return;
-    const userId = parseInt(req.user?.id || "0", 10);
+    if (!isDbAvailable())
+      return res.status(503).json({ error: "Database unavailable" });
+
+    const userId = req.user?.id;
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
     const { id } = req.params;
@@ -219,9 +225,10 @@ router
     }
   }) // DELETE /shared-captures/:id - Delete capture
   .delete(async (req: AuthRequest, res: Response) => {
-    if (!isDbAvailable()) return;
+    if (!isDbAvailable())
+      return res.status(503).json({ error: "Database unavailable" });
 
-    const userId = parseInt(req.user?.id || "0", 10);
+    const userId = req.user?.id;
     const { id } = req.params;
 
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
@@ -242,9 +249,10 @@ router
 
 // POST /shared-captures/:id/join - Join by share code
 router.post("/join/:code", async (req: AuthRequest, res: Response) => {
-  if (!isDbAvailable()) return;
+  if (!isDbAvailable())
+    return res.status(503).json({ error: "Database unavailable" });
 
-  const userId = parseInt(req.user?.id || "0", 10);
+  const userId = req.user?.id;
   const { code } = req.params;
 
   if (!userId) return res.status(401).json({ error: "Unauthorized" });
@@ -280,9 +288,10 @@ router.post("/join/:code", async (req: AuthRequest, res: Response) => {
 
 // POST /shared-captures/:id/collaborators - Add collaborator by email
 router.post("/:id/collaborators", async (req: AuthRequest, res: Response) => {
-  if (!isDbAvailable()) return;
+  if (!isDbAvailable())
+    return res.status(503).json({ error: "Database unavailable" });
 
-  const userId = parseInt(req.user?.id || "0", 10);
+  const userId = req.user?.id;
   const { id } = req.params;
   const { email, role } = req.body || {};
 
@@ -317,9 +326,10 @@ router.post("/:id/collaborators", async (req: AuthRequest, res: Response) => {
 
 // GET /shared-captures/students/list - Get all students for invitation
 router.get("/students/list", async (req: AuthRequest, res: Response) => {
-  if (!isDbAvailable()) return;
+  if (!isDbAvailable())
+    return res.status(503).json({ error: "Database unavailable" });
 
-  const userId = parseInt(req.user?.id || "0", 10);
+  const userId = req.user?.id;
   if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
   try {
@@ -335,9 +345,10 @@ router.get("/students/list", async (req: AuthRequest, res: Response) => {
 router.delete(
   "/:id/collaborators/:collabId",
   async (req: AuthRequest, res: Response) => {
-    if (!isDbAvailable()) return;
+    if (!isDbAvailable())
+      return res.status(503).json({ error: "Database unavailable" });
 
-    const userId = parseInt(req.user?.id || "0", 10);
+    const userId = req.user?.id;
     const { id, collabId } = req.params;
 
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
@@ -350,7 +361,7 @@ router.delete(
           .json({ error: "Only owner can remove collaborators" });
       }
 
-      await removeCollaborator(id, parseInt(collabId, 10));
+      await removeCollaborator(id, collabId);
 
       return res.json({ status: "ok", message: "Collaborator removed" });
     } catch (e) {

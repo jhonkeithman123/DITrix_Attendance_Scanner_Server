@@ -31,14 +31,14 @@ import authMiddleware from "../middleware/authMiddleware.js";
 import { isDbAvailable } from "../config/firestore.js";
 import { setVerifiedByEmail } from "../services/userStore.js";
 import dotenv from "dotenv";
-import jwt from "jsonwebtoken";
 
 dotenv.config();
 const router = express.Router();
 
 //* Temporary route to debug session
 router.get("/debug/session-by-token", async (req: Request, res: Response) => {
-  if (!isDbAvailable()) return;
+  if (!isDbAvailable())
+    return res.status(503).json({ error: "Database unavailable" });
 });
 
 router.get("/session", async (req: Request, res: Response) => {
@@ -87,7 +87,8 @@ router.get("/session", async (req: Request, res: Response) => {
 });
 
 router.post("/logout", async (req: Request, res: Response) => {
-  if (!isDbAvailable()) return;
+  if (!isDbAvailable())
+    return res.status(503).json({ error: "Database unavailable" });
 
   try {
     const token = req.headers.authorization?.split(" ")[1];
@@ -116,7 +117,8 @@ router.post("/logout", async (req: Request, res: Response) => {
 // Verifies token (via middleware) and extends session expiry in DB.
 // Returns { expiresAt: ISOString } on success.
 router.post("/refresh", authMiddleware, async (req: Request, res: Response) => {
-  if (!isDbAvailable()) return;
+  if (!isDbAvailable())
+    return res.status(503).json({ error: "Database unavailable" });
 
   try {
     const token =
@@ -193,7 +195,8 @@ router.post("/login", async (req: Request, res: Response) => {
 });
 
 router.post("/signup", async (req: Request, res: Response) => {
-  if (!isDbAvailable()) return;
+  if (!isDbAvailable())
+    return res.status(503).json({ error: "Database unavailable" });
 
   const { email, password, name } = req.body || {};
   if (!email || !password) {
@@ -287,7 +290,8 @@ router.post("/signup", async (req: Request, res: Response) => {
 });
 
 router.post("/resend", async (req: Request, res: Response) => {
-  if (!isDbAvailable()) return;
+  if (!isDbAvailable())
+    return res.status(503).json({ error: "Database unavailable" });
 
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: "Email required" });
@@ -335,7 +339,8 @@ router.post("/resend", async (req: Request, res: Response) => {
 });
 
 router.post("/verify", async (req: Request, res: Response) => {
-  if (!isDbAvailable()) return;
+  if (!isDbAvailable())
+    return res.status(503).json({ error: "Database unavailable" });
 
   const { email, code } = req.body || {};
   if (!email || !code)
@@ -374,7 +379,8 @@ router.post("/verify", async (req: Request, res: Response) => {
 });
 
 router.post("/forgot", async (req: Request, res: Response) => {
-  if (!isDbAvailable()) return;
+  if (!isDbAvailable())
+    return res.status(503).json({ error: "Database unavailable" });
 
   const { email } = req.body;
   if (!email) {
@@ -429,7 +435,8 @@ router.post("/forgot", async (req: Request, res: Response) => {
 });
 
 router.patch("/reset", async (req: Request, res: Response) => {
-  if (!isDbAvailable()) return;
+  if (!isDbAvailable())
+    return res.status(503).json({ error: "Database unavailable" });
 
   const { email, code, newPassword } = req.body || {};
   console.table(req.body);
