@@ -103,4 +103,26 @@ app.use("/profile", routerProfile);
 app.use("/health", health);
 app.use("/shared-captures", routerSharedCaptures);
 
+const IS_SERVERLESS =
+  process.env.VERCEL === "1" || process.env.IS_SERVERLESS === "true";
+
+if (!IS_SERVERLESS) {
+  // start long-running server and background DB init
+  async function start(): Promise<void> {
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, () =>
+      console.log(`Server listening on http://localhost:${PORT}`)
+    );
+  }
+
+  start().catch((err) => {
+    console.error("Failed to start server:", err);
+    process.exit(1);
+  });
+} else {
+  console.log(
+    "Serverless mode: app exported for platform (no listen(), no background loops)."
+  );
+}
+
 export default app;
