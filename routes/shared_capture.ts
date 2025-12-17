@@ -122,6 +122,13 @@ router
         status: r.status,
       }));
 
+      // Sorting by name alphabetically
+      rosterForClient.sort((a, b) =>
+        (a.name ?? "").localeCompare(b.name ?? "", undefined, {
+          senstivity: "base",
+        })
+      );
+
       return res.json({
         status: "ok",
         capture: {

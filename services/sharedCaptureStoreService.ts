@@ -201,7 +201,8 @@ export async function getRoster(captureId: string) {
     .doc(captureId)
     .collection("roster")
     .get();
-  return snap.docs.map((d) => {
+
+  const rows = snap.docs.map((d) => {
     const data = d.data();
     return {
       student_id: data.student_id,
@@ -211,6 +212,15 @@ export async function getRoster(captureId: string) {
       status: data.status ?? null,
     };
   });
+
+  rows.sort((a, b) =>
+    (a.student_name || "")
+      .toString()
+      .toLowerCase()
+      .localeCompare((b.student_name || "").toString().toLowerCase())
+  );
+
+  return rows;
 }
 
 export async function addCollaborator(
