@@ -82,7 +82,7 @@ router
 
       return res.status(201).json({
         status: "ok",
-        cpatureId: created.captureId,
+        captureId: created.captureId,
         shareCode: created.shareCode,
       });
     } catch (e) {
